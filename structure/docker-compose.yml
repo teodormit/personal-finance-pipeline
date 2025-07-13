@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  postgres:
+    container_name: postgres_container
+    image: postgres:17
+    env_file:
+      - .env
+    environment:
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - ./data:/var/lib/postgresql/data
+      - ./logs:/var/log/postgresql
+      - ./postgres-config/postgres.conf:/etc/postgresql/postgresql.conf
+      # Uncomment and provide if you have a pg_hba.conf file
+      # - ./postgres-config/pg_hba.conf:/etc/postgresql/pg_hba.conf
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+
+volumes:
+  data:
+    driver: local
+  logs:
+    driver: local
+
