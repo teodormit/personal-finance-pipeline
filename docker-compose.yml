@@ -29,8 +29,10 @@ services:
     image: minio/minio:latest
     container_name: personal_finance_minio
     restart: always
+    env_file:
+      - .env
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER} ## Still loads minioadmin for some reason  # Can try Use env_file: [ .env ] plus environment: - MINIO_ROOT_USER in your docker-compose.yml, then down -v && up -d.
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
       # Port for the MinIO API
@@ -44,6 +46,14 @@ services:
       - data_platform_network
     command: minio server /data --console-address ":9001" # Command to start the MinIO server
 
+#########################################################
+  # 3. The EL (Extract-Load) Tool: Airbyte
+  #########################################################
+# Airbyte has been installed using the Airbyte CLI, so we don't need to define it here.
+# It's managed separately and can be started with `abctl local start`.
+# Use the start-platform.bat script to start the Airbyte platform and the docker containers
+
+
 volumes:
   postgres_data:
     driver: local
@@ -51,6 +61,7 @@ volumes:
     driver: local
   logs:
     driver: local
+
 
 networks:
   data_platform_network:
