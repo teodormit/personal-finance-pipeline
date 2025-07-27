@@ -12,11 +12,12 @@ services:
     environment:
       PGDATA: /var/lib/postgresql/data
     volumes:
-      - ./data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data 
       - ./logs:/var/log/postgresql
-      - ./postgres-config/postgres.conf:/etc/postgresql/postgresql.conf
+      - ./config/postgres/postgres.conf:/etc/postgresql/postgresql.conf
       # Uncomment and provide if you have a pg_hba.conf file
-      # - ./postgres-config/pg_hba.conf:/etc/postgresql/pg_hba.conf
+      # - ./config/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf
+
     ports:
       - "5432:5432"
     restart: unless-stopped

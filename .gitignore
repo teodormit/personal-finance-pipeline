@@ -212,3 +212,5 @@ data/
 
 # Ignore environment file with secrets
 .env
+secrets
+secrets/
