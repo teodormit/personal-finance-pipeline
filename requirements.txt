@@ -1,0 +1,40 @@
+# Core Data Processing
+pandas
+numpy
+
+# Excel File Support
+openpyxl # For .xlsx files
+xlrd 
+
+# Database Connectivity
+psycopg2-binary
+sqlalchemy
+
+# Object Storage (MinIO/S3)
+minio
+boto3
+
+# Data Validation
+pydantic
+pydantic-settings
+
+# Utilities
+python-dotenv
+pyyaml
+
+# Logging
+loguru
+
+# Google Drive Integration (Phase 2)
+# google-auth2
+# google-auth-oauthlib
+# google-auth-httplib2
+# google-api-python-client.0
+
+# Development & Testing
+pytest
+pytest-cov
+
+# Optional: Jupyter for exploration
+jupyter
+ipykernel

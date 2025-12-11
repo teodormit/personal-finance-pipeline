@@ -10,18 +10,30 @@ services:
     env_file:
       - .env
     environment:
+      POSTGRES_DB: finance_warehouse
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PGDATA: /var/lib/postgresql/data
     volumes:
       - postgres_data:/var/lib/postgresql/data 
-      - ./logs:/var/log/postgresql
+      - ./logs/postgres:/var/log/postgresql
       - ./config/postgres/postgres.conf:/etc/postgresql/postgresql.conf
       # Uncomment and provide if you have a pg_hba.conf file
       # - ./config/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf
+            # Database initialization scripts
+      - ./init_scripts:/docker-entrypoint-initdb.d
 
     ports:
       - "5432:5432"
     restart: unless-stopped
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d personal_finance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - data_platform_network
 
 #########################################################
   # 2. The Landing Zone: MinIO Object Storage
@@ -29,7 +41,7 @@ services:
   minio:
     image: minio/minio:latest
     container_name: personal_finance_minio
-    restart: always
+    restart: unless-stopped
     env_file:
       - .env
     environment:

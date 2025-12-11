@@ -1,0 +1,42 @@
+# =============================================================================
+# REQUIREMENTS.TXT - Basic Data Analysis & Modern Data Stack
+# =============================================================================
+
+# Core Data Analysis
+pandas
+numpy
+openpyxl
+pyarrow
+
+# Database & SQL
+psycopg2-binary
+sqlalchemy
+
+# Data Visualization
+matplotlib
+seaborn
+plotly
+
+# Modern Data Stack
+dbt-core
+dbt-postgres
+#apache-airflow
+#apache-airflow-providers-postgres
+#apache-airflow-providers-amazon
+#minio
+boto3
+
+# Development Tools
+jupyter
+jupyterlab
+python-dotenv
+pyyaml
+requests
+
+# Data Quality
+#great-expectations
+
+# Utilities
+#tqdm
+python-dateutil
+#click

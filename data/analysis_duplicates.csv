@@ -1,0 +1,164 @@
+date,amount,category,note,account,type
+2019-04-10,-10.0,Food & Drinks,,Cash,Expenses
+2019-04-10,-10.0,Food & Drinks,,Cash,Expenses
+2019-04-19,-8.5,Food & Drinks,,Cash,Expenses
+2019-04-19,-8.5,Food & Drinks,,Cash,Expenses
+2019-05-12,-10.0,Food & Drinks,,Cash,Expenses
+2019-05-12,-10.0,Food & Drinks,,Cash,Expenses
+2019-07-02,-20.0,Food & Drinks,,Cash,Expenses
+2019-07-02,-20.0,Food & Drinks,,Cash,Expenses
+2019-07-04,-10.0,Food & Drinks,,Cash,Expenses
+2019-07-04,-10.0,Food & Drinks,,Cash,Expenses
+2019-07-30,-10.0,Food & Drinks,,Cash,Expenses
+2019-07-30,-10.0,Food & Drinks,,Cash,Expenses
+2019-08-16,-10.0,Food & Drinks,,Cash,Expenses
+2019-08-16,-10.0,Food & Drinks,,Cash,Expenses
+2019-08-26,-10.0,"Bar, cafe",,Cash,Expenses
+2019-08-26,-10.0,"Bar, cafe",,Cash,Expenses
+2019-08-29,-10.0,Food & Drinks,,Cash,Expenses
+2019-08-29,-10.0,Food & Drinks,,Cash,Expenses
+2019-09-14,-60.0,"Holiday, trips, hotels",,Cash,Expenses
+2019-09-14,-60.0,"Holiday, trips, hotels",,Cash,Expenses
+2019-12-18,-12.0,Food & Drinks,,Cash,Expenses
+2019-12-18,-12.0,Food & Drinks,,Cash,Expenses
+2019-12-19,-3.0,Parking,,Cash,Expenses
+2019-12-19,-3.0,Parking,,Cash,Expenses
+2020-01-31,-10.0,Food & Drinks,,Cash,Expenses
+2020-01-31,-10.0,Food & Drinks,,Cash,Expenses
+2020-02-23,-20.0,"Bar, cafe",,Cash,Expenses
+2020-02-23,-20.0,"Bar, cafe",,Cash,Expenses
+2020-05-17,-30.0,Food & Drinks,,Cash,Expenses
+2020-05-17,-30.0,Food & Drinks,,Cash,Expenses
+2020-05-17,-20.0,"Holiday, trips, hotels",,Cash,Expenses
+2020-05-17,-20.0,"Holiday, trips, hotels",,Cash,Expenses
+2020-07-09,-50.0,"Active sport, fitness",Диди,Cash,Expenses
+2020-07-09,-50.0,"Active sport, fitness",,Cash,Expenses
+2020-10-07,-10.0,Food & Drinks,,Cash,Expenses
+2020-10-07,-10.0,Food & Drinks,,Cash,Expenses
+2020-10-20,-12.0,Food & Drinks,,Cash,Expenses
+2020-10-20,-12.0,Food & Drinks,,Cash,Expenses
+2020-11-07,-14.0,Food & Drinks,,Cash,Expenses
+2020-11-07,-14.0,Food & Drinks,,Cash,Expenses
+2020-12-20,-20.0,Food & Drinks,,Cash,Expenses
+2020-12-20,-20.0,Food & Drinks,,Cash,Expenses
+2021-01-17,-30.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-01-17,-30.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-03-05,-10.0,Food & Drinks,,Cash,Expenses
+2021-03-05,-10.0,Food & Drinks,,Cash,Expenses
+2021-05-16,-20.0,Food & Drinks,,Cash,Expenses
+2021-05-16,-20.0,Food & Drinks,,Cash,Expenses
+2021-05-23,-15.0,Food & Drinks,,Cash,Expenses
+2021-05-23,-15.0,Food & Drinks,,Cash,Expenses
+2021-06-12,-50.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-06-12,-50.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-09-15,-20.0,Food & Drinks,,Cash,Expenses
+2021-09-15,-20.0,Food & Drinks,,Cash,Expenses
+2021-10-28,-20.0,"Charity, gifts",,Cash,Expenses
+2021-10-28,-20.0,"Charity, gifts",,Cash,Expenses
+2021-11-13,-10.0,Groceries,,Cash,Expenses
+2021-11-13,-10.0,Groceries,,Cash,Expenses
+2021-12-11,-30.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-11,-30.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-11,-20.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-11,-20.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-11,-6.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-11,-6.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-12,-25.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-12,-25.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-12,-25.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-12,-15.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-12,-15.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-12,-13.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-12,-13.0,"Holiday, trips, hotels",,Cash,Expenses
+2021-12-15,-20.0,"Charity, gifts",,Cash,Expenses
+2021-12-15,-20.0,"Charity, gifts",gabi rd,Cash,Expenses
+2021-12-15,-15.0,Food & Drinks,,Cash,Expenses
+2021-12-15,-15.0,Food & Drinks,,Cash,Expenses
+2021-12-15,-15.0,Food & Drinks,,Cash,Expenses
+2021-12-15,-15.0,Food & Drinks,,Cash,Expenses
+2022-03-03,-40.0,"Holiday, trips, hotels",,Cash,Expenses
+2022-03-03,-40.0,"Holiday, trips, hotels",Бургас Бензин,Cash,Expenses
+2022-08-08,-60.0,Transportation,,Cash,Expenses
+2022-08-08,-60.0,Transportation,,Cash,Expenses
+2022-08-13,-30.0,"Charity, gifts",,Cash,Expenses
+2022-08-13,-30.0,"Charity, gifts",,Cash,Expenses
+2022-09-01,-22.0,Food & Drinks,,Cash,Expenses
+2022-09-01,-22.0,Food & Drinks,,Cash,Expenses
+2022-10-24,-35.0,"Electronics, accessories",,Cash,Expenses
+2022-10-24,-35.0,"Electronics, accessories",,Cash,Expenses
+2022-11-03,-12.0,Food & Drinks,,Cash,Expenses
+2022-11-03,-12.0,Food & Drinks,,Cash,Expenses
+2022-12-04,-10.0,Food & Drinks,,Cash,Expenses
+2022-12-04,-10.0,Food & Drinks,,Cash,Expenses
+2022-12-04,-10.0,Food & Drinks,,Cash,Expenses
+2022-12-04,-10.0,Food & Drinks,,Cash,Expenses
+2023-01-22,-10.0,"Holiday, trips, hotels",,Cash,Expenses
+2023-01-22,-10.0,"Holiday, trips, hotels",,Cash,Expenses
+2023-01-23,-8.0,"Bar, cafe",,Cash,Expenses
+2023-01-23,-8.0,"Bar, cafe",,Cash,Expenses
+2023-04-03,-11.0,Food & Drinks,,Cash,Expenses
+2023-04-03,-11.0,Food & Drinks,,Cash,Expenses
+2023-04-12,-10.0,Taxi,,Cash,Expenses
+2023-04-12,-10.0,Taxi,,Cash,Expenses
+2023-04-14,-35.0,Food & Drinks,,Cash,Expenses
+2023-04-14,-35.0,Food & Drinks,,Cash,Expenses
+2023-05-15,-15.0,Food & Drinks,,Cash,Expenses
+2023-05-15,-15.0,Food & Drinks,,Cash,Expenses
+2023-06-16,-22.0,Groceries,,Cash,Expenses
+2023-06-16,-22.0,Groceries,,Cash,Expenses
+2023-07-06,-10.0,"Holiday, trips, hotels",,Cash,Expenses
+2023-07-06,-10.0,"Holiday, trips, hotels",,Cash,Expenses
+2023-09-30,-25.0,Food & Drinks,,Cash,Expenses
+2023-09-30,-25.0,Food & Drinks,,Cash,Expenses
+2024-02-10,-60.0,"Home, garden",,Cash,Expenses
+2024-02-10,-60.0,"Home, garden",,Cash,Expenses
+2024-03-05,-17.0,Food & Drinks,,Cash,Expenses
+2024-03-05,-17.0,Food & Drinks,,Cash,Expenses
+2024-06-02,-6.0,"Bar, cafe",,Cash,Expenses
+2024-06-02,-6.0,"Bar, cafe","281BATM2415506GL AC1 ПОС 6.00 BGN авт.код:326362-DERIDA DENS OOD/GR. SOFIYA/PAN:4402****7980/CT:01,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-06-04,-5.0,Food & Drinks,,Cash,Expenses
+2024-06-04,-5.0,Food & Drinks,"281BATM24157035U AC1 ПОС 5.00 BGN авт.код:743274-SLADORIA/SOFIYA/PAN:4402****7980/CT:01,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-06-23,-112.63,Clothes & shoes,"281BATM2417701OJ AC1 ПОС 112.63 BGN, авт.код:935762, remixshop.com/Sofia/PAN:4402****7980/CT:01,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-06-23,-112.63,Clothes & shoes,281BATM2417701OJ AC1 Операция с карта,UniCredit Bulbank - 1522449108BGN,Expenses
+2024-06-23,-1.5,"Charges, Fees","281FTRB2417602KL AC1 Fee АТМ 200.00 BGN авт.код:526031-CCB ATM A5600012/BURGAS/PAN:4402****7980/CT:01,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-06-23,-1.5,"Charges, Fees",281FTRB2417602KL AC1 Операция с карта,UniCredit Bulbank - 1522449108BGN,Expenses
+2024-06-26,-28.26,Clothes & shoes,281BATM2418000MO AC1 Операция с карта,UniCredit Bulbank - 1522449108BGN,Expenses
+2024-06-26,-28.26,Clothes & shoes,"281BATM2418000MO AC1 ПОС 28.26 BGN, авт.код:489447, remixshop.com/Sofia/PAN:4402****7980/CT:01,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-07-03,-0.3,"Charges, Fees","281FTRB24186005Q AC1 Fee АТМ 40.00 BGN авт.код:567072-UNICREDIT BULBANK AD/UL. G. SOFIIS/TID:A5400028/PAN:4402****7980/CT:01/NOM::VDU,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-07-03,-0.3,"Charges, Fees","281FTRB24186005N AC1 Fee АТМ 40.00 BGN авт.код:577133-UNICREDIT BULBANK AD/UL. G. SOFIIS/TID:A5400028/PAN:4402****7980/CT:01/NOM::VDU,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-07-19,-0.25,"Charges, Fees",963ULM0242012242 UCH Такса за превод,UniCredit Bulbank - 1522449108BGN,Expenses
+2024-07-19,-0.25,"Charges, Fees",963ULM0242012244 UCH Такса за превод,UniCredit Bulbank - 1522449108BGN,Expenses
+2024-07-23,-70.0,Life events,"281BATM2420701O4 AC1 ПОС 70.00 BGN, авт.код:679287, Revolut**1480*/Dublin/PAN:4402****7980/CT:01,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-07-23,-70.0,Life events,,Cash,Expenses
+2024-08-04,-9.0,"Bar, cafe",,Cash,Expenses
+2024-08-04,-9.0,"Bar, cafe","281BATM2421806WJ AC1 ПОС 9.00 BGN авт.код:842514-DIDDI BIYCH/BURGAS/PAN:4402****7980/CT:01,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-08-12,-0.25,"Charges, Fees",963ULM024225A981 UCH Такса за превод,UniCredit Bulbank - 1522449108BGN,Expenses
+2024-08-12,-0.25,"Charges, Fees",963ULM024225A9LT UCH Такса за превод,UniCredit Bulbank - 1522449108BGN,Expenses
+2024-08-15,-175.0,"Holiday, trips, hotels","281BATM242320156 AC1 ПОС 175.00 BGN, авт.код:113616, Revolut**1480*/Dublin/PAN:4402****7980/CT:01,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-08-15,-175.0,"Holiday, trips, hotels","281BATM24232013Y AC1 ПОС 175.00 BGN, авт.код:099408, Revolut**1480*/Dublin/PAN:4402****7980/CT:01,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-08-26,-30.0,"Charity, gifts",,Cash,Expenses
+2024-08-26,-30.0,"Charity, gifts","281BATM2424100CM AC1 ПОС 30.00 BGN, авт.код:892541, Revolut**1480*/Dublin/PAN:4402****7980/CT:01,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-09-12,-28.9,Food & Drinks,"281BATM2425700KA AC1 ПОС 28.90 BGN авт.код:791451-LA BOTTEGA/SOFIA/TID:P5422549/PAN:5169****1763/CT:08/NOM::MDU,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-09-12,-28.9,Food & Drinks,"281BATM2425701FD AC1 ПОС 28.90 BGN авт.код:685296-DEA STROY MT EOOD/Sofia/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-09-22,-12.0,"Culture, sport events","281BATM2426805WB AC1 ПОС 12.00 BGN авт.код:916543-RIM - ST - SOFIA/SOFIA/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-09-22,-12.0,"Culture, sport events","281BATM2426805D0 AC1 ПОС 12.00 BGN авт.код:060434-RIM - KASA/SOFIA/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-10-21,-0.25,"Charges, Fees",963ULM024295A528 UCH Такса за превод,UniCredit Bulbank - 1522449108BGN,Expenses
+2024-10-21,-0.25,"Charges, Fees",963ULM024295A4WM UCH Такса за превод,UniCredit Bulbank - 1522449108BGN,Expenses
+2024-10-31,-17.5,"Charity, gifts",281BATM24306014Y AC1 Операция с карта,UniCredit Bulbank - 1522449108BGN,Expenses
+2024-10-31,-17.5,"Charity, gifts","281BATM24306014Y AC1 ПОС 17.50 BGN авт.код:315411-EDIS SHOP EOOD/Sofia/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-11-05,-100.0,Child Support,"963FTRO24310A6RM TF1 превод,Издаден вътр.банков превод",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-11-05,-100.0,Child Support,"281BATM2431201UW AC1 ПОС 100.00 BGN авт.код:240335-Revolut**2132*/Dublin/IRL/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-11-05,-100.0,Child Support,"963FTRO24310A57X TF1 превод,Издаден вътр.банков превод",UniCredit Bulbank - 1522449108BGN,Expenses
+2024-11-05,-0.7,"Charges, Fees",963FTRO24310A6RM CHH Такса за вътрешнобанков превод,UniCredit Bulbank - 1522449108BGN,Expenses
+2024-11-05,-0.7,"Charges, Fees",963FTRO24310A57X CHH Такса за вътрешнобанков превод,UniCredit Bulbank - 1522449108BGN,Expenses
+2025-02-10,-4.0,"Bar, cafe","281BATM2504204PK AC1 ПОС 4.00 BGN авт.код:905979-BISTRO BATLARS/BURGAS/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2025-02-10,-4.0,"Bar, cafe","281BATM2504203T2 AC1 ПОС 4.00 BGN авт.код:454967-BISTRO BATLARS/BURGAS/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2025-02-11,-5.5,"Bar, cafe","281BATM25043033F AC1 ПОС 5.50 BGN авт.код:254113-BISTRO BATLARS/BURGAS/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2025-02-11,-5.5,"Bar, cafe","281BATM2504302RF AC1 ПОС 5.50 BGN авт.код:685984-BISTRO BATLARS/BURGAS/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2025-03-21,-1.5,"Charges, Fees","281FTRB25083003D AC1 Fee АТМ 400.00 BGN авт.код:166120-UBB SUH.REKA,BL.209A/SOFIA/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2025-03-21,-1.5,"Charges, Fees","281FTRB25083003B AC1 Fee АТМ 400.00 BGN авт.код:480888-UBB SUH.REKA,BL.209A/SOFIA/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2025-04-28,-3.71,"Energy, utilities","963ULM025118AC54 MMU Софийска вода АД кл.номер 10055259 50 фактура 0000000137805484,Комунално плащане mBanking",UniCredit Bulbank - 1522449108BGN,Expenses
+2025-04-28,-3.71,"Energy, utilities","963ULM025118AC50 MMU Софийска вода АД кл.номер 10055259 50 фактура 0000000140105077,Комунално плащане mBanking",UniCredit Bulbank - 1522449108BGN,Expenses
+2025-04-28,-3.71,"Energy, utilities","963ULM025118AC51 MMU Софийска вода АД кл.номер 10055259 50 фактура 0000000138575740,Комунално плащане mBanking",UniCredit Bulbank - 1522449108BGN,Expenses
+2025-06-17,-3.4,Groceries,"281BATM25169021A AC1 ПОС 3.40 BGN авт.код:675743-TOP TABACO OOD/SOFIA/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
+2025-06-17,-3.4,Groceries,"281BATM2516901JH AC1 ПОС 3.40 BGN авт.код:913008-TOP TABACO OOD/SOFIA/PAN:5169****1763/CT:08,Операция с карта",UniCredit Bulbank - 1522449108BGN,Expenses
