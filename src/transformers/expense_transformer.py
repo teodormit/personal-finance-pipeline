@@ -155,7 +155,6 @@ class ExpenseTransformer:
             'payment': 'payment_method'
         })
         
-        print(f"  DEBUG - Columns after rename: {list(df.columns)}")
         print(f"  Columns: {list(df.columns)[:5]}...")
         return df
     

@@ -19,54 +19,69 @@ Airbyte connection has beend established to the G
 
 ## Project 2nd Phase - 28.11.2025
 - Continue with current architecture but simplify the pipeline
-        - Will no longer use Airbyte for loading
+- Will no longer use Airbyte for loading
+- BudgetBakers API extraction (Premium plan required)
 
 ```
-Wallet App (CSV Export) → Google Drive → Manual Trigger → MinIO Archive → 
-Transform (Python) → PostgreSQL → Tableau Public Dashboard
+BudgetBakers API → Transform (Python) → PostgreSQL → Tableau Public
+       OR
+Wallet App (CSV/XLSX Export) → Transform → PostgreSQL → Tableau Public
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 ### Technology Stack
 - **Data Warehouse**: PostgreSQL 17 (self-hosted via Docker)
-- **Object Storage**: MinIO (S3-compatible, for archiving & learning)
+- **Extraction**: BudgetBakers REST API (Premium) or file export
 - **Transformation**: Python 3.11+ with Pandas
-- **Orchestration**: Manual trigger (Phase 1), Prefect planned (Phase 2)
+- **Orchestration**: Prefect or cron / Task Scheduler
 - **Visualization**: Tableau Public
 - **Infrastructure**: Docker Compose
 
 ### Key Features
-- ✅ Delta processing (only new transactions inserted)
-- ✅ Data quality validation (date parsing, null checks)
-- ✅ Historical archiving in MinIO
-- ✅ Idempotent pipeline (safe to re-run)
-- ✅ Comprehensive logging
+- BudgetBakers API extraction (automated, no manual export)
+- Incremental loading (only new transactions inserted)
+- Delta processing with transaction hash deduplication
+- Data quality validation (date parsing, null checks)
+- Idempotent pipeline (safe to re-run)
+- Comprehensive logging
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose installed
 - Python 3.11+
-- Google Drive account (for CSV storage)
+- BudgetBakers Wallet Premium + API token (from web.budgetbakers.com/settings/apiTokens)
 - Tableau Public Desktop (for visualization)
 
-### Monthly Workflow
+### Setup
+1. Copy `.env.template` to `.env` and set `BUDGETBAKERS_API_TOKEN`
+2. Start PostgreSQL: `docker compose up -d postgres`
+3. Install deps: `pip install -r requirements.txt`
 
-1. **Export data from Wallet app**
-   - Open Wallet (BudgetBakers) app
-   - Navigate to: Settings → Export Data → CSV
-   - Save to Google Drive: `/Finance/Wallet_Exports/`
+### Run Pipeline
 
-2. **Download CSV to local machine**
-   - Place file in: `data/raw/expense_export_YYYY-MM-DD.csv`
+**Incremental (daily updates from API):**
+```bash
+python scripts/run_pipeline.py --mode incremental --source api
+```
 
-3. **Run the pipeline**
-   ```bash
-   python scripts/run_pipeline.py
-   ```
+**Full load from file (initial or manual):**
+```bash
+python scripts/run_pipeline.py --mode full --source file --file data/raw/export.xlsx
+```
 
-4. **Refresh Tableau dashboard**
-   - Open Tableau Public Desktop
-   - Refresh data extract
-   - Publish updated dashboard
+**Full load from API (date range):**
+```bash
+python scripts/run_pipeline.py --mode full --source api --from-date 2024-01-01 --to-date 2025-01-01
+```
+
+### Scheduled Runs (Prefect)
+```bash
+prefect deployment build flows/expense_pipeline_flow.py:expense_pipeline_flow --cron "0 6 * * *"
+prefect agent start
+```
+
+### Tableau
+- Connect to `silver.v_tableau_transactions`
+- Refresh data extract after each pipeline run

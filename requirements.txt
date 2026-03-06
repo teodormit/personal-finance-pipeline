@@ -21,9 +21,13 @@ pydantic-settings
 # Utilities
 python-dotenv
 pyyaml
+requests
 
 # Logging
 loguru
+
+# Orchestration
+prefect>=3.0
 
 # Google Drive Integration (Phase 2)
 # google-auth2

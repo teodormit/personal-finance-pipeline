@@ -36,7 +36,8 @@ services:
       - data_platform_network
 
 #########################################################
-  # 2. The Landing Zone: MinIO Object Storage
+  # 2. The Landing Zone: MinIO Object Storage (optional)
+  # Comment out if not needed - pipeline works with PostgreSQL only
   #########################################################
   minio:
     image: minio/minio:latest
