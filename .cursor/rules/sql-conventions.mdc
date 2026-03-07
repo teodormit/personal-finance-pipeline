@@ -1,0 +1,24 @@
+---
+description: SQL conventions for PostgreSQL schema scripts
+globs: init_scripts/**/*.sql
+alwaysApply: false
+---
+
+# SQL Conventions
+
+## File Naming
+- Init scripts are numbered in execution order: `01_`, `02_`, `03_`, etc.
+- These run automatically when the Postgres container starts for the first time
+
+## Table Naming
+- Always schema-qualified: `schema.table_name` (e.g. `silver.transactions`)
+- Snake_case for all identifiers
+
+## Standards
+- Grant privileges to `teodor_admin` after creating tables
+
+## Schema Roles
+- `staging`: temporary, uses DROP IF EXISTS + CREATE (rebuilt each run)
+- `bronze`: permanent raw archive, append-only
+- `silver`: cleaned data with `transaction_hash UNIQUE` for deduplication
+- `metadata`: pipeline logs and audit trails

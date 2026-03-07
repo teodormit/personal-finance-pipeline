@@ -1,0 +1,45 @@
+---
+description: Core project context for the personal finance data pipeline
+alwaysApply: true
+---
+
+# Personal Finance Pipeline
+
+## Project motivation
+I am building a free modern data warehouse project for my personal use. It will connect, enable and store various datasets, mostly financial. The goal is to centralize my datasets and automate the ETL process. I will be accessing the data frequently and I will need to have the latest data stored centrally so I can visualize it using Tableau. I want a smart automated(as much as possible) way to keep my personal finances in order and maintain open to add data of different nature and schema to store.
+I am extracting a .csv file from an app Wallet by BudgetBakers - a budgeting app. I have maintained a history inside the app which I have extracted and transformed. The current codebase just finished loading succesfully the initial load @src/loaders/initial_load.py. I have a Docker container running my postgres database (also a MinIO storage bucket which I decided I don't need for the moment). You can consult @architecture_doc.md for my plan but keep in mind I have made some furhter transformations. What we are doing is running the raw output from the app through the @src/transformers/expense_transformer.py transformation. The raw data that can be exported from the app looks like @data/raw/wallet_app_full_export_until_Aug.xlsx it can be .csv or .xlsx up to me.
+This is a Python data engineering project at it's core and I would value any further expertise.The focus is on the expense personal finance pipeline now.
+I am a data enthusiast and would love to have my data avaialable for visualization with Tableau or just for number crunching.
+A self-hosted personal finance data warehouse built with Python, PostgreSQL, and Docker.
+
+## What This Project Does
+- Extracts expense/income data from the BudgetBakers Wallet app (via REST API or CSV/XLSX export)
+- Transforms it with Python and Pandas
+- Loads it into PostgreSQL following a medallion architecture (staging → bronze → silver)
+- Data is visualized in Tableau
+
+## Tech Stack
+- **Python 3.11+** with Pandas for ETL
+- **PostgreSQL 17** running in Docker
+- **Docker Compose** for infrastructure
+- **Tableau** for dashboards
+
+## Project Layout
+- `src/extractors/` — pulls data from API or files
+- `src/transformers/` — cleans and enriches DataFrames
+- `src/loaders/` — writes data to PostgreSQL (initial + incremental)
+- `src/utils/` — database connection helper, hash generator
+- `init_scripts/` — numbered SQL scripts that create the database schema
+- `scripts/` — CLI entry points for running the pipeline
+- `data/raw/` — source export files from the Wallet app
+
+## Database Schemas
+- `staging` — temporary landing area, truncated each run
+- `bronze` — raw data as received, append-only
+- `silver` — cleaned and deduplicated, main analytics layer
+- `gold` — pre-computed aggregations (planned)
+- `metadata` — pipeline run logs and data quality issues
+
+## Deduplication
+Transactions are deduplicated using a SHA-256 `transaction_hash` built from date + amount + category + description.
+
