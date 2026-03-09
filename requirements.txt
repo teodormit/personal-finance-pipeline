@@ -35,6 +35,8 @@ prefect>=3.0
 # google-auth-httplib2
 # google-api-python-client.0
 
+dotenv
+
 # Development & Testing
 pytest
 pytest-cov

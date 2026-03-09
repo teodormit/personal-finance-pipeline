@@ -158,6 +158,7 @@ class ExpenseTransformer:
         print(f"  Columns: {list(df.columns)[:5]}...")
         return df
     
+    ### In the API we deliberately cast to string 
     def _step2_parse_dates(self, df):
         """
         Convert date strings to proper datetime objects
@@ -173,56 +174,64 @@ class ExpenseTransformer:
          - Various separators: '-', '/', '.'
          - Different orderings: YYYY-MM-DD, MM/DD/YYYY, DD.MM.YYYY
 
+        If the column is already a datetime dtype, just format to 'YYYY-MM-DD' string for SQL compatibility.
+
         """
         print("[2/9] Parsing dates...")
-        
+
         df = df.copy()
         
+        if pd.api.types.is_datetime64_any_dtype(df['date']):
+            # Already datetime; just format to 'YYYY-MM-DD' for SQL compatibility
+            df['date'] = df['date'].dt.strftime('%Y-%m-%d')
+            print(f"  Dates already parsed as datetime, reformatted for SQL.")
+            return df
+
         parsed_dates = []
         failed_rows = []
-        
+
         date_formats = [
-                '%Y-%m-%d',           # 2024-03-29
-                '%Y-%d-%m',           # 2025-20-02
-                '%m-%d-%Y',           # 03-29-2024
-                '%d-%m-%Y',           # 29-03-2024
-                '%Y-%m-%d',           # 2024-03-29
-                '%m/%d/%Y',           # 7/27/2025
-                '%d/%m/%Y',           # 27/7/2025
-                '%Y/%m/%d',           # 2025/07/27
-                '%m/%d/%Y %H:%M:%S',  # 7/27/2025 3:00:35
-                '%d/%m/%Y %H:%M:%S',  # 27/7/2025 3:00:35
-                '%Y-%m-%d %H:%M:%S',  # 2024-03-29 12:00:00
-                '%Y-%M-%D %H:%M:%S',  # 2024-03-29 12:00:00
-                '%Y-%d-%m %H:%M:%S',  # 2025-20-02 12:00:00
-                '%m-%d-%Y %H:%M:%S',  # 03-29-2024 12:00:00
-                '%d-%m-%Y %H:%M:%S',  # 29-03-2024 12:00:00
-                '%m/%d/%Y %H:%M:%S',  # 7/27/2025 3:00:35
-                '%d/%m/%Y %H:%M:%S',  # 27/7/2025 3:00:35
-                '%Y/%m/%d %H:%M:%S',  # 2025/07/27 3:00:35
-                '%m/%d/%Y %H:%M:%S',  # 7/27/2025 3:00:35
-                '%d/%m/%Y %H:%M:%S',  # 27/7/2025 3:00:35
-                '%d.%m.%Y',           # 29.03.2024 (European)
-                '%d-%m-%Y',           # 29-03-2024
-                '%Y.%d.%m',           # 2025.20.02
-                '%Y %d %m',           # "2025 20 02"
-            ]
+            '%Y-%m-%d',           # 2024-03-29
+            '%Y-%d-%m',           # 2025-20-02
+            '%m-%d-%Y',           # 03-29-2024
+            '%d-%m-%Y',           # 29-03-2024
+            '%Y-%m-%d',           # 2024-03-29
+            '%m/%d/%Y',           # 7/27/2025
+            '%d/%m/%Y',           # 27/7/2025
+            '%Y/%m/%d',           # 2025/07/27
+            '%m/%d/%Y %H:%M:%S',  # 7/27/2025 3:00:35
+            '%d/%m/%Y %H:%M:%S',  # 27/7/2025 3:00:35
+            '%Y-%m-%d %H:%M:%S',  # 2024-03-29 12:00:00
+            '%Y-%M-%D %H:%M:%S',  # 2024-03-29 12:00:00
+            '%Y-%d-%m %H:%M:%S',  # 2025-20-02 12:00:00
+            '%m-%d-%Y %H:%M:%S',  # 03-29-2024 12:00:00
+            '%d-%m-%Y %H:%M:%S',  # 29-03-2024 12:00:00
+            '%m/%d/%Y %H:%M:%S',  # 7/27/2025 3:00:35
+            '%d/%m/%Y %H:%M:%S',  # 27/7/2025 3:00:35
+            '%Y/%m/%d %H:%M:%S',  # 2025/07/27 3:00:35
+            '%m/%d/%Y %H:%M:%S',  # 7/27/2025 3:00:35
+            '%d/%m/%Y %H:%M:%S',  # 27/7/2025 3:00:35
+            '%d.%m.%Y',           # 29.03.2024 (European)
+            '%d-%m-%Y',           # 29-03-2024
+            '%Y.%d.%m',           # 2025.20.02
+            '%Y %d %m',           # "2025 20 02"
+        ]
         
         for idx, date_value in enumerate(df['date']):
             parsed_date = None
-            
+
             if pd.isna(date_value):
                 parsed_dates.append(pd.NaT)
                 continue  
-            
+
             # Attempt 1: flexible pandas parser        
             try:
                 # Try parsing with pandas (handles many formats)
                 parsed_date = pd.to_datetime(date_value, errors='raise')
             except (ValueError, TypeError):
                 parsed_date = None
-            
-             # ATTEMPT 2: Try common formats explicitly        
+
+            # ATTEMPT 2: Try common formats explicitly        
             if parsed_date is None:
                 for fmt in date_formats:
                     try:
@@ -232,22 +241,26 @@ class ExpenseTransformer:
                         parsed_date = None
                         continue
 
-        # If all attempts failed
+            # If all attempts failed
             if parsed_date is None:
                 parsed_dates.append(pd.NaT)
                 failed_rows.append((idx, date_value))
             else:
                 parsed_dates.append(parsed_date)
-     
+
         # Assign parsed dates
         df['date'] = pd.Series(parsed_dates, index=df.index)
-    
-    # Report results
-        valid = df['date'].notna().sum()
-        invalid = df['date'].isna().sum()
-    
+
+        # After parse: format all notna to 'YYYY-MM-DD'
+        mask = df['date'].notna()
+        if mask.any():
+            df.loc[mask, 'date'] = df.loc[mask, 'date'].dt.strftime('%Y-%m-%d')
+
+        # Report results
+        valid = mask.sum()
+        invalid = (~mask).sum()
+
         print(f"  Parsed {valid:,} dates")
-    
         if invalid > 0:
             print(f"  Warning: {invalid} invalid dates")
             self.stats['issues_found'].append(f"Invalid dates: {invalid}")
@@ -256,10 +269,10 @@ class ExpenseTransformer:
                 print(f" Failed date examples:")
                 for idx, val in failed_rows[:3]:
                     print(f"    Row {idx}: {repr(val)}")
-    
+
         if valid > 0:
             try:
-                print(f"  Range: {df['date'].min().date()} to {df['date'].max().date()}")
+                print(f"  Range: {df.loc[mask, 'date'].min()} to {df.loc[mask, 'date'].max()}")
             except Exception:
                 pass
 
@@ -485,6 +498,7 @@ if __name__ == "__main__":
     print("="*60)
     
     # Create sample data (like what Wallet app exports)
+    ## This format is coming from  the CSV Exports
     test_data = pd.DataFrame({
         'date': ['2024-03-29', '2025-20-02', '7/27/2025 3:00:35', '7/29/2025 3:00:35', '2025.20.02'],
         'note': ['Пердета', '281BATM2505200DE AC1 ПОС 23.47 BGN авт.код:438038-MANALI EOOD/Sofia/PAN:5169****1763/CT:08,Операция с карта', '281BATM2520905K6 AC1 ПОС 59.07 BGN авт.код:962648-LIDL BALGARIYA EOOD/BURGAS/PAN:5169****1763/CT:08,Операция с карта', '963FTRO25210AH6L TF2 превод,Получен вътр.банков превод', 'Invalid Date Example'],
@@ -512,7 +526,40 @@ if __name__ == "__main__":
     print("Transformer test complete!")
     print("="*60 + "\n")
 
-
+    # Create sample data (like what Wallet app exports)
+    ## This format is coming from  the API Exports
+    test_data_api = pd.DataFrame({
+        "source_record_id": ["uuid-1", "uuid-2", "uuid-3", "uuid-4", "uuid-5"],
+        'date_time': ['2024-03-29T00:00:00Z', '2025-20-02T00:00:00Z', '2025-07-27T03:00:35Z', '2025-07-29T03:00:35Z', '2025-02-20T00:00:00Z'],
+        'date': ['2024-03-29', '2025-20-02', '7/27/2025 3:00:35', '7/29/2025 3:00:35', '2025.20.02'],
+        'note': ['Пердета', '281BATM2505200DE AC1 ПОС 23.47 BGN авт.код:438038-MANALI EOOD/Sofia/PAN:5169****1763/CT:08,Операция с карта', '281BATM2520905K6 AC1 ПОС 59.07 BGN авт.код:962648-LIDL BALGARIYA EOOD/BURGAS/PAN:5169****1763/CT:08,Операция с карта', '963FTRO25210AH6L TF2 превод,Получен вътр.банков превод', 'Invalid Date Example'],
+        'type': ['Expenses', 'Expenses', 'Expenses', 'Income', 'Expenses'],
+        'payee': ['', '4591TATB0', '4591TATB0','ПЕПА ТОНЕВА НИКОЛОВА, BG81UNCR70001524149621', ''],
+        'payer': ['', '', '', '', ''],
+        'amount': ['-135.000000000', '-23.470000000', '-59.07', '75', '100.00'],
+        'labels': ['', '5002', '', '', ''],
+        'account': ['Cash', 'UniCredit Bulbank - 1522449108BGN', 'UniCredit Bulbank - 1522449108BGN', 'UniCredit Bulbank - 1522449108BGN', 'Cash'],
+        'category': ['Collections', 'Food & Drinks', 'Groceries', 'Child Support','Fines'],
+        'category_id': ['cat-1', 'cat-2', 'cat-3', 'cat-4', 'cat-5'],
+        'currency': ['BGN', 'BGN', 'BGN', 'BGN', 'BGN'],
+        'payment': ['CASH', 'TRANSFER', 'TRANSFER', 'TRANSFER', 'CASH'],
+        'account_id': ['acc-1', 'acc-2', 'acc-3', 'acc-4', 'acc-5']
+    })
+    
+    print("\n API INPUT DATA:")
+    print(test_data_api)
+    
+    # Create transformer and process data
+    transformer = ExpenseTransformer()
+    clean_data_api = transformer.transform(test_data_api)
+    
+    print("\n API OUTPUT DATA (all columns):")
+    print(clean_data_api)
+    print(clean_data_api.columns)
+    
+    print("\n" + "="*60)
+    print(" API Transformer test complete!")
+    print("="*60 + "\n")
 # ============================================================================
 # KEY TAKEAWAYS
 # ============================================================================

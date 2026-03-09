@@ -172,9 +172,11 @@ class InitialDataLoader:
         
        
         # Prepare data for staging (minimal processing)
-        staging_df = df.copy()
-        staging_df = df[['date', 'description', 'type', 'payee', 'amount', 'labels', 'account', 'subcategory', 'currency', 'payment_type']].copy()
-        staging_df = staging_df.rename(columns={'payment_type': 'payment','description': 'note', 'subcategory': 'category' })
+        # Use payment_method (ExpenseTransformer output) or payment_type (legacy CSV)
+        payment_col = "payment_method" if "payment_method" in df.columns else "payment_type"
+        staging_cols = ['date', 'description', 'type', 'payee', 'amount', 'labels', 'account', 'subcategory', 'currency', payment_col]
+        staging_df = df[[c for c in staging_cols if c in df.columns]].copy()
+        staging_df = staging_df.rename(columns={payment_col: 'payment', 'description': 'note', 'subcategory': 'category' })
         staging_df['source_file'] = self.file_path.name
         staging_df['batch_id'] = str(self.batch_id)
         staging_df['loaded_at'] = datetime.now()
@@ -200,18 +202,19 @@ class InitialDataLoader:
         bronze_df = df.copy()
         
         # Rename columns to match bronze schema
-        bronze_df = bronze_df.rename(columns={
+        rename_map = {
             'date': 'transaction_date',
             'note': 'description',
-            #'type': 'transaction_type',
             'payee': 'payee',
             'amount': 'amount',
             'labels': 'labels',
             'account': 'account_name',
             'subcategory': 'subcategory',
             'currency': 'currency',
-            'payment_type': 'payment_method'
-        })
+        }
+        if "payment_type" in bronze_df.columns and "payment_method" not in bronze_df.columns:
+            rename_map["payment_type"] = "payment_method"
+        bronze_df = bronze_df.rename(columns=rename_map)
         
         # Add metadata
         bronze_df['source_file'] = self.file_path.name
@@ -463,9 +466,9 @@ class InitialDataLoader:
         print(f"Duration: {duration:.2f} seconds")
         print(f"\nData Flow:")
         print(f"  Source file:     {self.run_stats['rows_extracted']:,} rows")
-        print(f"  → Staging:       {self.run_stats['rows_staged']:,} rows")
-        print(f"  → Bronze:        {self.run_stats['rows_loaded_bronze']:,} rows")
-        print(f"  → Silver:        {self.run_stats['rows_loaded_silver']:,} rows")
+        print(f"  -> Staging:       {self.run_stats['rows_staged']:,} rows")
+        print(f"  -> Bronze:        {self.run_stats['rows_loaded_bronze']:,} rows")
+        print(f"  -> Silver:        {self.run_stats['rows_loaded_silver']:,} rows")
         print(f"\nNext Steps:")
         print(f"  1. Verify data: psql -U teodor_admin -d finance_warehouse")
         print(f"     SELECT * FROM silver.v_tableau_transactions LIMIT 10;")

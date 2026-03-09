@@ -8,6 +8,7 @@ Requires Wallet Premium and API token from web.budgetbakers.com/settings/apiToke
 API Reference: https://rest.budgetbakers.com/wallet/reference
 """
 
+import ast
 import os
 import time
 from datetime import datetime, timedelta
@@ -17,6 +18,8 @@ from typing import Optional
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+
+from extractors.api_field_mapper import map_raw_to_transformer_input
 
 load_dotenv()
 
@@ -75,70 +78,38 @@ class BudgetBakersExtractor:
         self._accounts_cache = accounts
         return accounts
 
-    def _record_type_to_app_type(self, record_type: str) -> str:
-        """Map API recordType (income/expense) to app export type (Income/Expenses)."""
-        return "Income" if record_type == "income" else "Expenses"
-
-    def _payment_type_to_app_format(self, payment_type: Optional[str]) -> str:
-        """Map API paymentType to app export format (uppercase, e.g. CASH, TRANSFER)."""
-        if not payment_type:
-            return ""
-        # API: cash, debit_card, credit_card, transfer, voucher, mobile_payment, web_payment
-        mapping = {
-            "cash": "CASH",
-            "debit_card": "DEBIT_CARD",
-            "credit_card": "CREDIT_CARD",
-            "transfer": "TRANSFER",
-            "voucher": "VOUCHER",
-            "mobile_payment": "MOBILE_PAYMENT",
-            "web_payment": "WEB_PAYMENT",
-        }
-        return mapping.get(payment_type.lower(), payment_type.upper())
-
-    def _record_to_row(
-        self,
-        record: dict,
-        accounts: dict,
-    ) -> dict:
-        """Convert single API Record to row dict matching ExpenseTransformer input."""
-        amount_obj = record.get("amount") or {}
-        amount_val = amount_obj.get("value", 0)
-        currency = amount_obj.get("currencyCode", "EUR")
-        record_type = record.get("recordType", "expense")
-        # For expenses, amount is typically negative in app export
-        if record_type == "expense" and amount_val > 0:
-            amount_val = -amount_val
-        elif record_type == "income" and amount_val < 0:
-            amount_val = abs(amount_val)
-
-        category_obj = record.get("category")
-        category_name = category_obj.get("name", "") if category_obj else ""
-
-        payee = record.get("payee") or record.get("payer") or ""
-
-        labels_arr = record.get("labels") or []
-        labels_str = ", ".join(l.get("name", "") for l in labels_arr) if labels_arr else ""
-
-        account_id = record.get("accountId", "")
-        account_name = accounts.get(account_id, account_id or "")
-
-        record_date = record.get("recordDate", "")
-        if isinstance(record_date, str) and "T" in record_date:
-            record_date = record_date.split("T")[0]
-
-        return {
-            "date": record_date,
-            "note": record.get("note") or "",
-            "type": self._record_type_to_app_type(record_type),
-            "payee": payee,
-            "amount": amount_val,
-            "labels": labels_str,
-            "account": account_name,
-            "category": category_name,
-            "currency": currency,
-            "payment": self._payment_type_to_app_format(record.get("paymentType")),
-            "record_id": record.get("id"),  # For lineage, optional
-        }
+## Not sure if this will work
+    def _get_categories(self) -> dict:
+        """Fetch categories and cache. Maps category_id -> category info (name, parent, etc.)."""
+        if self._categories_cache is not None:
+            return self._categories_cache
+        categories = {}
+        offset = 0
+        while True:
+            resp = self.session.get(
+                f"{API_BASE}/v1/api/categories",
+                params={"limit": MAX_RECORDS_PER_PAGE, "offset": offset},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            for cat in data.get("categories", []):
+                cat_id = cat.get("id")
+                if cat_id:
+                    categories[cat_id] = {
+                        "name": cat.get("name", "Unknown"),
+                        "parentId": cat.get("parentId"),
+                        "parentName": None,  # Resolved below if needed
+                    }
+            if data.get("nextOffset") is None:
+                break
+            offset = data["nextOffset"]
+        # Resolve parent names for hierarchy
+        for cat_id, info in categories.items():
+            parent_id = info.get("parentId")
+            if parent_id and parent_id in categories:
+                info["parentName"] = categories[parent_id].get("name")
+        self._categories_cache = categories
+        return categories
 
     def _fetch_records_page(
         self,
@@ -169,6 +140,109 @@ class BudgetBakersExtractor:
             return resp.json()
         raise RuntimeError("API returned 409 Conflict repeatedly. Try again later.")
 
+    def _flatten_record(self, record: dict) -> dict:
+        """Flatten a single API record's nested objects into a flat dict.
+        No business logic -- just structural flattening for inspection.
+        """
+        amount_obj = record.get("amount") or {}
+        category_obj = record.get("category") or {}
+        labels_arr = record.get("labels") or []
+
+        flat = {
+            "id": record.get("id"),
+            "recordDate": record.get("recordDate"),
+            "recordType": record.get("recordType"),
+            "paymentType": record.get("paymentType"),
+            "note": record.get("note"),
+            "payee": record.get("payee"),
+            "payer": record.get("payer"),
+            "amount_value": amount_obj.get("value"),
+            "amount_currency": amount_obj.get("currencyCode"),
+            "category_id": category_obj.get("id"),
+            "category_name": category_obj.get("name"),
+            "accountId": record.get("accountId"),
+            "labels": ", ".join(lbl.get("name", "") for lbl in labels_arr) if labels_arr else "",
+        }
+
+        # Parse baseAmount: only handle dict, otherwise input data as is
+        base_amount = record.get("baseAmount")
+        if isinstance(base_amount, dict):
+            flat["base_amount_value"] = base_amount.get("value")
+            flat["base_amount_currency"] = base_amount.get("currencyCode")
+        else:
+            flat["base_amount_value"] = base_amount
+            flat["base_amount_currency"] = None
+
+        # Keep any other top-level keys we haven't explicitly handled
+        known_keys = {
+            "id", "recordDate", "recordType", "paymentType", "note",
+            "payee", "payer", "amount", "category", "accountId", "labels",
+            "baseAmount",
+        }
+        for key in record:
+            if key not in known_keys:
+                flat[key] = record[key]
+
+        return flat
+
+    def extract_raw(
+        self,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+    ) -> pd.DataFrame:
+        """Extract raw API records with only structural flattening.
+        Resolves account names and category hierarchy from API lookups.
+        """
+        if date_to is None:
+            date_to = datetime.now()
+        if date_from is None:
+            date_from = date_to - timedelta(days=30)
+
+        date_from_str = date_from.strftime("%Y-%m-%d")
+        date_to_str = date_to.strftime("%Y-%m-%d")
+
+        print(f"\n[EXTRACT RAW] BudgetBakers API: {date_from_str} to {date_to_str}")
+
+        accounts = self._get_accounts()
+        print(f"  Loaded {len(accounts)} accounts")
+        categories = self._get_categories()
+        print(f"  Loaded {len(categories)} categories")
+
+        all_rows = []
+        offset = 0
+
+        while True:
+            data = self._fetch_records_page(date_from_str, date_to_str, offset)
+            records = data.get("records", [])
+            if not records:
+                break
+            for rec in records:
+                all_rows.append(self._flatten_record(rec))
+            print(f"  Fetched {len(all_rows)} records so far...")
+            if data.get("nextOffset") is None:
+                break
+            offset = data["nextOffset"]
+            time.sleep(0.2)
+
+        df = pd.DataFrame(all_rows)
+
+        # Resolve account names
+        df["account_name"] = df["accountId"].map(
+            lambda x: accounts.get(x, x) if pd.notna(x) else ""
+        )
+
+        # Add category parent for hierarchy exploration
+        def _parent_name(cat_id):
+            if pd.isna(cat_id):
+                return None
+            info = categories.get(cat_id)
+            return info.get("parentName") if info else None
+
+        df["category_parent_name"] = df["category_id"].map(_parent_name)
+
+        print(f"  Total extracted: {len(df):,} raw records")
+        return df
+
     def extract(
         self,
         date_from: Optional[datetime] = None,
@@ -190,36 +264,14 @@ class BudgetBakersExtractor:
         if date_from is None:
             date_from = date_to - timedelta(days=365)
 
-        date_from_str = date_from.strftime("%Y-%m-%d")
-        date_to_str = date_to.strftime("%Y-%m-%d")
+        print(f"\n[EXTRACT] BudgetBakers API: {date_from.strftime('%Y-%m-%d')} to {date_to.strftime('%Y-%m-%d')}")
 
-        print(f"\n[EXTRACT] BudgetBakers API: {date_from_str} to {date_to_str}")
+        raw_df = self.extract_raw(date_from=date_from, date_to=date_to)
+        if raw_df.empty:
+            print("  No records to map")
+            return raw_df
 
-        accounts = self._get_accounts()
-        print(f"  Loaded {len(accounts)} accounts")
-
-        all_records = []
-        offset = 0
-
-        while True:
-            data = self._fetch_records_page(date_from_str, date_to_str, offset)
-            records = data.get("records", [])
-            if not records:
-                break
-            for rec in records:
-                row = self._record_to_row(rec, accounts)
-                all_records.append(row)
-            print(f"  Fetched {len(all_records)} records so far...")
-            if data.get("nextOffset") is None:
-                break
-            offset = data["nextOffset"]
-            time.sleep(0.2)  # Gentle rate limiting
-
-        df = pd.DataFrame(all_records)
-
-        # Drop record_id from output (ExpenseTransformer doesn't need it)
-        if "record_id" in df.columns:
-            df = df.drop(columns=["record_id"])
-
-        print(f"  Total extracted: {len(df):,} records")
+        # Map raw API DataFrame to ExpenseTransformer via the api_field_mapper module
+        df = map_raw_to_transformer_input(raw_df)
+        print(f"  Total extracted: {len(df):,} records (mapped for ExpenseTransformer)")
         return df
