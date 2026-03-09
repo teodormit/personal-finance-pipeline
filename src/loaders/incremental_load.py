@@ -59,7 +59,13 @@ class IncrementalDataLoader:
         }
 
     def load(self) -> bool:
-        """Execute the incremental load pipeline."""
+        """Execute the incremental load pipeline.
+
+        Staging, bronze, and silver are loaded inside a single DB transaction.
+        If any layer fails the entire batch is rolled back so the layers stay
+        consistent.  The metadata log is written on a separate connection so it
+        persists even after a rollback.
+        """
         print("\n" + "=" * 70)
         print("PERSONAL FINANCE PIPELINE - INCREMENTAL LOAD")
         print("=" * 70)
@@ -83,9 +89,21 @@ class IncrementalDataLoader:
                 self._log_pipeline_run()
                 return True
 
-            self._load_staging(transformed_df)
-            self._load_bronze(transformed_df)
-            self._load_silver(transformed_df)
+            # Single transaction for all three layers
+            conn = self.db.connect()
+            try:
+                self._load_staging(transformed_df, conn)
+                self._load_bronze(transformed_df, conn)
+                self._load_silver(transformed_df, conn)
+                conn.commit()
+                print("\n  All layers committed in a single transaction.")
+            except Exception:
+                conn.rollback()
+                print("\n  Transaction rolled back - no partial data written.")
+                raise
+            finally:
+                conn.close()
+
             self.run_stats["status"] = "SUCCESS"
             self._log_pipeline_run()
             self._display_summary()
@@ -107,15 +125,12 @@ class IncrementalDataLoader:
             cursor = conn.cursor()
             cursor.execute("SELECT MAX(transaction_date) FROM silver.transactions")
             row = cursor.fetchone()
-            if row and row[0]:
-                val = row[0]
+            val = row[0] if row else None
             if val is None:
                 return None
             if isinstance(val, datetime):
                 return val
-            # PostgreSQL returns date for DATE columns
             return datetime.combine(val, datetime.min.time())
-            return None
 
     def _extract(self) -> pd.DataFrame:
         """Extract data from API or file."""
@@ -162,10 +177,9 @@ class IncrementalDataLoader:
         print(f"  Output: {len(result):,} rows")
         return result
 
-    def _load_staging(self, df: pd.DataFrame):
+    def _load_staging(self, df: pd.DataFrame, conn):
         """Load to staging (truncate first)."""
         print("\n[LOAD STAGING] Loading to staging.raw_transactions...")
-        # Use payment_method (transformer output) - align with schema
         cols = ["date", "description", "type", "payee", "amount", "labels", "account", "subcategory", "currency"]
         payment_col = "payment_method" if "payment_method" in df.columns else "payment_type"
         cols.append(payment_col)
@@ -177,14 +191,13 @@ class IncrementalDataLoader:
         staging_df["loaded_at"] = datetime.now()
         staging_df["source_row_number"] = range(1, len(staging_df) + 1)
 
-        with self.db.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute("TRUNCATE TABLE staging.raw_transactions;")
-        rows = self._bulk_insert(staging_df, "staging", "raw_transactions")
+        cursor = conn.cursor()
+        cursor.execute("TRUNCATE TABLE staging.raw_transactions;")
+        rows = self._bulk_insert(staging_df, "staging", "raw_transactions", conn)
         self.run_stats["rows_staged"] = rows
         print(f"  Loaded {rows:,} rows to staging")
 
-    def _load_bronze(self, df: pd.DataFrame):
+    def _load_bronze(self, df: pd.DataFrame, conn):
         """Append to bronze (immutable)."""
         print("\n[LOAD BRONZE] Appending to bronze.transactions_raw...")
         bronze_df = df.copy()
@@ -213,21 +226,18 @@ class IncrementalDataLoader:
             "ingestion_timestamp", "ingestion_batch_id", "has_quality_issues",
         ]
         bronze_df = bronze_df[[c for c in bronze_columns if c in bronze_df.columns]]
-        rows = self._bulk_insert(bronze_df, "bronze", "transactions_raw")
+        rows = self._bulk_insert(bronze_df, "bronze", "transactions_raw", conn)
         self.run_stats["rows_loaded_bronze"] = rows
         print(f"  Appended {rows:,} rows to bronze")
 
-    def _load_silver(self, df: pd.DataFrame):
+    def _load_silver(self, df: pd.DataFrame, conn):
         """Insert only new records (deduplicate by transaction_hash). Does NOT truncate."""
         print("\n[LOAD SILVER] Inserting new records to silver.transactions...")
 
-        # Get existing hashes
-        with self.db.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT transaction_hash FROM silver.transactions")
-            existing_hashes = {row[0] for row in cursor.fetchall()}
+        cursor = conn.cursor()
+        cursor.execute("SELECT transaction_hash FROM silver.transactions")
+        existing_hashes = {row[0] for row in cursor.fetchall()}
 
-        # Filter to only new records
         new_df = df[~df["transaction_hash"].isin(existing_hashes)].copy()
         skipped = len(df) - len(new_df)
         self.run_stats["rows_skipped_duplicates"] = skipped
@@ -235,10 +245,9 @@ class IncrementalDataLoader:
         if len(new_df) == 0:
             print(f"  All {len(df)} records already exist (duplicates). Skipped.")
             self.run_stats["rows_loaded_silver"] = 0
-            self._update_category_mapping()
+            self._update_category_mapping(conn)
             return
 
-        # Prepare silver data (match transformer output column names to silver schema)
         silver_df = new_df.copy()
         rename_map = {
             "date": "transaction_date",
@@ -267,35 +276,34 @@ class IncrementalDataLoader:
             "classification",
         ]
         silver_df = silver_df[[c for c in silver_columns if c in silver_df.columns]]
-        rows = self._bulk_insert(silver_df, "silver", "transactions")
+        rows = self._bulk_insert(silver_df, "silver", "transactions", conn)
         self.run_stats["rows_loaded_silver"] = rows
         print(f"  Inserted {rows:,} new rows (skipped {skipped:,} duplicates)")
 
-        self._update_category_mapping()
+        self._update_category_mapping(conn)
 
-    def _update_category_mapping(self):
+    def _update_category_mapping(self, conn):
         """Update category and classification from category_mapping for new rows."""
         print("  Updating category hierarchy...")
-        with self.db.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE silver.transactions t
-                SET category = cm.category, classification = cm.classification
-                FROM silver.category_mapping cm
-                WHERE t.subcategory = cm.subcategory
-                  AND (t.category IS NULL OR t.classification IS NULL);
-            """)
-            updated = cursor.rowcount
-            cursor.execute("""
-                UPDATE silver.transactions
-                SET category = 'Income', classification = 'WANT'
-                WHERE transaction_type = 'INCOME'
-                  AND subcategory IN ('Child Support', 'Lottery, gambling')
-                  AND (category IS NULL OR category != 'Income');
-            """)
-            income_override = cursor.rowcount
-            if updated > 0 or income_override > 0:
-                print(f"  Updated {updated + income_override:,} transactions with category groups")
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE silver.transactions t
+            SET category = cm.category, classification = cm.classification
+            FROM silver.category_mapping cm
+            WHERE t.subcategory = cm.subcategory
+              AND (t.category IS NULL OR t.classification IS NULL);
+        """)
+        updated = cursor.rowcount
+        cursor.execute("""
+            UPDATE silver.transactions
+            SET category = 'Income', classification = 'WANT'
+            WHERE transaction_type = 'INCOME'
+              AND subcategory IN ('Child Support', 'Lottery, gambling')
+              AND (category IS NULL OR category != 'Income');
+        """)
+        income_override = cursor.rowcount
+        if updated > 0 or income_override > 0:
+            print(f"  Updated {updated + income_override:,} transactions with category groups")
 
     def _bulk_insert(self, df: pd.DataFrame, schema: str, table: str) -> int:
         """Bulk insert DataFrame to PostgreSQL."""
