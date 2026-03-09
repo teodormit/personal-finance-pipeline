@@ -257,6 +257,8 @@ class IncrementalDataLoader:
             "transaction_hash", "transaction_date", "transaction_type",
             "amount", "amount_abs", "currency",
             "amount_eur", "amount_abs_eur", "eur_conversion_rate",
+            "amount_bgn", "amount_abs_bgn",
+            "source_record_id", "category_id",
             "description", "payee", "subcategory",
             "account_name", "payment_method", "labels",
             "year", "month", "quarter", "year_month",
@@ -284,8 +286,16 @@ class IncrementalDataLoader:
                   AND (t.category IS NULL OR t.classification IS NULL);
             """)
             updated = cursor.rowcount
-            if updated > 0:
-                print(f"  Updated {updated:,} transactions with category groups")
+            cursor.execute("""
+                UPDATE silver.transactions
+                SET category = 'Income', classification = 'WANT'
+                WHERE transaction_type = 'INCOME'
+                  AND subcategory IN ('Child Support', 'Lottery, gambling')
+                  AND (category IS NULL OR category != 'Income');
+            """)
+            income_override = cursor.rowcount
+            if updated > 0 or income_override > 0:
+                print(f"  Updated {updated + income_override:,} transactions with category groups")
 
     def _bulk_insert(self, df: pd.DataFrame, schema: str, table: str) -> int:
         """Bulk insert DataFrame to PostgreSQL."""

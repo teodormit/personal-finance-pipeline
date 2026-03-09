@@ -322,9 +322,8 @@ class InitialDataLoader:
                 print(f"\n  DEBUG - No duplicate transaction_hashes found ")
         
         # Rename columns to match silver schema
-        silver_df = silver_df.rename(columns={
+        rename_map = {
             'date': 'transaction_date',
-            'note': 'description',
             'transaction_type': 'transaction_type',
             'amount': 'amount',
             'amount_abs': 'amount_abs',
@@ -335,9 +334,13 @@ class InitialDataLoader:
             'payee': 'payee',
             'subcategory': 'subcategory',
             'account': 'account_name',
-            'payment_type': 'payment_method',
             'labels': 'labels'
-        })
+        }
+        if 'note' in silver_df.columns:
+            rename_map['note'] = 'description'
+        if 'payment_type' in silver_df.columns and 'payment_method' not in silver_df.columns:
+            rename_map['payment_type'] = 'payment_method'
+        silver_df = silver_df.rename(columns=rename_map)
         
         # Add metadata
         silver_df['created_at'] = datetime.now()
@@ -352,6 +355,8 @@ class InitialDataLoader:
             'transaction_hash', 'transaction_date', 'transaction_type',
             'amount', 'amount_abs', 'currency',
             'amount_eur', 'amount_abs_eur', 'eur_conversion_rate',
+            'amount_bgn', 'amount_abs_bgn',
+            'source_record_id', 'category_id',
             'description', 'payee', 'subcategory',
             'account_name', 'payment_method', 'labels',
             'year', 'month', 'quarter', 'year_month',
@@ -360,7 +365,7 @@ class InitialDataLoader:
             'classification'
         ]
         
-        silver_df = silver_df[silver_columns]
+        silver_df = silver_df[[c for c in silver_columns if c in silver_df.columns]]
         
         # On initial load, we load everything without deduplication
         # (deduplication will be handled in incremental loads)
@@ -375,14 +380,21 @@ class InitialDataLoader:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE silver.transactions t
-                SET category = cm.category
-                    ,classification = cm.classification
+                SET category = cm.category, classification = cm.classification
                 FROM silver.category_mapping cm
                 WHERE t.subcategory = cm.subcategory
                   AND (t.category IS NULL OR t.classification IS NULL);
             """)
             updated = cursor.rowcount
-            print(f"  Updated {updated:,} transactions with category groups")
+            cursor.execute("""
+                UPDATE silver.transactions
+                SET category = 'Income', classification = 'WANT'
+                WHERE transaction_type = 'INCOME'
+                  AND subcategory IN ('Child Support', 'Lottery, gambling')
+                  AND (category IS NULL OR category != 'Income');
+            """)
+            income_override = cursor.rowcount
+            print(f"  Updated {updated + income_override:,} transactions with category groups")
     
     def _bulk_insert(self, df: pd.DataFrame, schema: str, table: str) -> int:
         """

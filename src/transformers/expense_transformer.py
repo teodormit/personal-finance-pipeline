@@ -50,10 +50,11 @@ class ExpenseTransformer:
     # Think of it as a reference table anyone can use
     # Not specific to one transformer object
     
+    # Official BGN peg: 1 EUR = 1.95583 BGN → 1 BGN = 0.51130 EUR
     EUR_RATES = {
-        'BGN': 0.5112,  # 1 BGN = 0.5112 EUR
-        'EUR': 1.0,     # 1 EUR = 1 EUR
-        'USD': 1.17,    # 1 USD = 1.17 EUR
+        'BGN': 0.51130,
+        'EUR': 1.0,
+        'USD': 1.17,
     }
     
     def __init__(self):
@@ -110,7 +111,7 @@ class ExpenseTransformer:
         df = self._step2_parse_dates(df)
         df = self._step3_parse_amounts(df)
         df = self._step4_standardize_types(df)
-        df = self._step5_convert_to_eur(df)
+        df = self._step5_convert_currencies(df)
         df = self._step6_add_derived_fields(df)
         df = self._step7_add_classification(df)  
         df = self._step8_generate_hashes(df)
@@ -336,24 +337,20 @@ class ExpenseTransformer:
         
         return df
     
-    def _step5_convert_to_eur(self, df):
+    def _step5_convert_currencies(self, df):
         """
-        Convert all amounts to EUR for standardization
+        Convert amounts to EUR and BGN for standardization.
         
-        WHY:
-        - Easy to compare across currencies
-        - Simplifies aggregations
-        - Keep original currency too (for reference)
-        
-        FORMULA:
-        amount_eur = amount_original × conversion_rate
-        
-        EXAMPLE:
-        -100 BGN × 0.5112 = -51.12 EUR
+        EUR: amount_eur = amount × eur_conversion_rate
+        BGN: Uses API base_amount_value when available (actual bank rate),
+             else fixed peg rate (1 EUR = 1.95583 BGN).
         """
-        print("[5/9] Converting to EUR...")
+        print("[5/9] Converting currencies (EUR + BGN)...")
         
         df = df.copy()
+        
+        # Ensure currency is string for mapping
+        df['currency'] = df['currency'].astype(str).str.strip().str.upper()
         
         # Get rate for each currency
         df['eur_conversion_rate'] = df['currency'].map(self.EUR_RATES)
@@ -361,15 +358,33 @@ class ExpenseTransformer:
         # Handle unknown currencies (default to 1.0)
         unknown = df['eur_conversion_rate'].isna().sum()
         if unknown > 0:
-            print(f" {unknown} unknown currencies, defaulting to 1.0")
+            print(f"  {unknown} unknown currencies, defaulting to 1.0")
             df['eur_conversion_rate'] = df['eur_conversion_rate'].fillna(1.0)
         
         # Calculate EUR amounts
         df['amount_eur'] = (df['amount'] * df['eur_conversion_rate']).round(2)
         df['amount_abs_eur'] = (df['amount_abs'] * df['eur_conversion_rate']).round(2)
         
-        print(f"  Converted to EUR")
-        print(f"  Total: €{df['amount_eur'].sum():,.2f}")
+        # BGN conversion: bidirectional model
+        # Default: amount_bgn = amount_eur / 0.51130 (BGN peg)
+        # Override: if currency=BGN, amount_bgn = amount
+        # Override: if API has base_amount_value in BGN, use it (actual bank rate)
+        df['amount_bgn'] = (df['amount_eur'] / self.EUR_RATES['BGN']).round(2)
+        df.loc[df['currency'] == 'BGN', 'amount_bgn'] = df.loc[df['currency'] == 'BGN', 'amount'].astype(float).round(2)
+        
+        has_base = 'base_amount_value' in df.columns and 'base_amount_currency' in df.columns
+        if has_base:
+            mask_eur_api_bgn = (
+                (df['currency'] == 'EUR') &
+                (df['base_amount_currency'].fillna('').astype(str).str.upper() == 'BGN') &
+                df['base_amount_value'].notna()
+            )
+            df.loc[mask_eur_api_bgn, 'amount_bgn'] = df.loc[mask_eur_api_bgn, 'base_amount_value'].astype(float).round(2)
+        
+        df['amount_abs_bgn'] = df['amount_bgn'].abs().round(2)
+        
+        print(f"  Converted to EUR and BGN")
+        print(f"  Total EUR: €{df['amount_eur'].sum():,.2f}")
         
         return df
     
