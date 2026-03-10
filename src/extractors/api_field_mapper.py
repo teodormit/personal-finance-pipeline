@@ -82,8 +82,14 @@ def rename_to_transformer_schema(df: pd.DataFrame) -> pd.DataFrame:
         "paymentType": "payment",
         "payee": "payee",
         "payer": "payer",
-        "labels": "labels"
+        "labels": "labels",
+        "category_parent_name": "category_name",
+        "recordState": "record_state",
+        "createdAt": "created_at",
+        "updatedAt": "updated_at"
     }
+    
+
     actual_rename = {k: v for k, v in rename_map.items() if k in df.columns}
     return df.rename(columns=actual_rename)
 
@@ -129,7 +135,8 @@ def map_raw_to_transformer_input(raw_df: pd.DataFrame) -> pd.DataFrame:
     # Select only columns ExpenseTransformer expects (drop extras like id, category_id, etc.)
     expected_cols = [
         "source_record_id", "date", "date_time", "note", "type", "payee", "payer", "amount", "labels",
-        "account", "category", "currency", "payment", "category_id", "account_id",
+        "account_name", "account", "account_id", "category_parent_name", "category_id", "category", "currency", "payment", 
+        "base_amount_value", "base_amount_currency", "record_state", "created_at", "updated_at"       
     ]
     output_cols = [c for c in expected_cols if c in df.columns]
     return df[output_cols].copy()

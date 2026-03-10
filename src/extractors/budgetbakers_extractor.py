@@ -171,7 +171,7 @@ class BudgetBakersExtractor:
             flat["base_amount_currency"] = base_amount.get("currencyCode")
         else:
             flat["base_amount_value"] = base_amount
-            flat["base_amount_currency"] = None
+            flat["base_amount_currency"] = "EUR"
 
         # Keep any other top-level keys we haven't explicitly handled
         known_keys = {
