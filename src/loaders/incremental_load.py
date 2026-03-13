@@ -52,6 +52,8 @@ class IncrementalDataLoader:
         source: str = "api",
         file_path: str = None,
         account_filter: Optional[str] = "eur",
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
     ):
         """
         Initialize loader.
@@ -60,10 +62,14 @@ class IncrementalDataLoader:
             source: 'api' for BudgetBakers API, 'file' for local file
             file_path: Path to source file (required when source='file')
             account_filter: 'eur' (default) or 'bgn_final'. 'all' = no filter.
+            from_date: Override start date for API extraction (YYYY-MM-DD). Default: day after last silver.
+            to_date: Override end date for API extraction (YYYY-MM-DD). Default: today.
         """
         self.source = source
         self.file_path = Path(file_path) if file_path else None
         self.account_filter = account_filter
+        self.from_date = from_date
+        self.to_date = to_date
         self.db = get_db_connector()
         self.transformer = ExpenseTransformer()
         self.batch_id = uuid.uuid4()
@@ -168,10 +174,18 @@ class IncrementalDataLoader:
         return self._extract_from_file()
 
     def _extract_from_api(self) -> pd.DataFrame:
-        """Extract from BudgetBakers API for date range after last silver date."""
+        """Extract from BudgetBakers API. Uses from_date/to_date overrides or silver watermark."""
         last_date = self._get_last_silver_date()
-        date_to = datetime.now()
-        date_from = (last_date + timedelta(days=1)) if last_date else (date_to - timedelta(days=365))
+        date_to = (
+            datetime.strptime(self.to_date, "%Y-%m-%d")
+            if self.to_date
+            else datetime.now()
+        )
+        date_from = (
+            datetime.strptime(self.from_date, "%Y-%m-%d")
+            if self.from_date
+            else ((last_date + timedelta(days=1)) if last_date else (date_to - timedelta(days=365)))
+        )
         if date_from >= date_to:
             print("\n[EXTRACT] No new date range - silver is up to date.")
             return pd.DataFrame()
@@ -448,6 +462,8 @@ def main():
         default="eur",
         help="Account filter preset (default: eur)",
     )
+    parser.add_argument("--from-date", help="Start date for API extraction (YYYY-MM-DD). Default: day after last silver")
+    parser.add_argument("--to-date", help="End date for API extraction (YYYY-MM-DD). Default: today")
     args = parser.parse_args()
 
     if args.source == "file" and not args.file:
@@ -457,6 +473,8 @@ def main():
         source=args.source,
         file_path=args.file,
         account_filter=args.account_filter,
+        from_date=args.from_date,
+        to_date=args.to_date,
     )
     success = loader.load()
     sys.exit(0 if success else 1)

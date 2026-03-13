@@ -77,11 +77,11 @@ Examples:
     )
     parser.add_argument(
         "--from-date",
-        help="Start date for API extraction (YYYY-MM-DD). Default: 1 year ago for full, last silver date for incremental",
+        help="Start date for API extraction (YYYY-MM-DD). Override: full=1yr ago, incremental=day after last silver",
     )
     parser.add_argument(
         "--to-date",
-        help="End date for API extraction (YYYY-MM-DD). Default: today",
+        help="End date for API extraction (YYYY-MM-DD). Override: default=today",
     )
     parser.add_argument(
         "--account-filter",
@@ -140,6 +140,8 @@ Examples:
             source=args.source,
             file_path=args.file,
             account_filter=args.account_filter,
+            from_date=args.from_date,
+            to_date=args.to_date,
         )
         success = loader.load()
 
