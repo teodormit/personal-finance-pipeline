@@ -84,6 +84,11 @@ def main():
     parser.add_argument("--from-date", type=str, help="Start date YYYY-MM-DD (overrides --days)")
     parser.add_argument("--to-date", type=str, help="End date YYYY-MM-DD (default: today)")
     parser.add_argument(
+        "--use-silver-watermark",
+        action="store_true",
+        help="Use day after max(silver.transaction_date) as start date (for incremental-style dry run)",
+    )
+    parser.add_argument(
         "--account-filter",
         choices=["eur", "bgn_final"],
         default="eur",
@@ -109,12 +114,8 @@ def main():
         from extractors.budgetbakers_extractor import BudgetBakersExtractor
 
         date_to = datetime.strptime(args.to_date, "%Y-%m-%d") if args.to_date else datetime.now()
-        if args.from_date:
-            date_from = datetime.strptime(args.from_date, "%Y-%m-%d")
-        else:
-            date_from = date_to - timedelta(days=args.days)
 
-        # Check what the incremental loader would use as date_from
+        last_silver = None
         try:
             from utils.db_connector import get_db_connector
             db = get_db_connector()
@@ -123,13 +124,24 @@ def main():
                 cur.execute("SELECT MAX(transaction_date) FROM silver.transactions")
                 row = cur.fetchone()
                 last_silver = row[0] if row else None
+        except Exception as e:
+            print(f"\nCould not read silver watermark: {e}")
+
+        if args.use_silver_watermark:
+            if last_silver is None:
+                print("\n--use-silver-watermark requires silver.transactions to have data. Table is empty.")
+                sys.exit(1)
+            date_from = datetime.combine(last_silver, datetime.min.time()) + timedelta(days=1)
+            print(f"\nSilver high-watermark: {last_silver}  (using date_from={date_from.date()})")
+        elif args.from_date:
+            date_from = datetime.strptime(args.from_date, "%Y-%m-%d")
+        else:
+            date_from = date_to - timedelta(days=args.days)
             if last_silver:
                 watermark_from = datetime.combine(last_silver, datetime.min.time()) + timedelta(days=1)
                 print(f"\nSilver high-watermark: {last_silver}  (loader would use date_from={watermark_from.date()})")
             else:
                 print("\nSilver table is empty - loader would default to 1 year lookback")
-        except Exception as e:
-            print(f"\nCould not read silver watermark: {e}")
 
         print(f"Extraction window: {date_from.date()} to {date_to.date()}")
         extractor = BudgetBakersExtractor()
