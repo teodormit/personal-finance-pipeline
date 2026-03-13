@@ -119,6 +119,9 @@ class ExpenseTransformer:
         
         self.stats['rows_output'] = len(df)
         
+        # Pre-load validation
+        self._validate_before_return(df)
+        
         print(f"\n{'='*60}")
         print(f"TRANSFORMATION COMPLETE")
         print(f"Output: {len(df):,} rows")
@@ -148,14 +151,14 @@ class ExpenseTransformer:
         
         # Lowercase all column names
         df.columns = df.columns.str.lower().str.strip()
-        
+
         # Rename to match our schema
         df = df.rename(columns={
             'note': 'description',
             'category': 'subcategory',  # Original becomes subcategory
             'payment': 'payment_method'
         })
-        
+
         print(f"  Columns: {list(df.columns)[:5]}...")
         return df
     
@@ -405,8 +408,12 @@ class ExpenseTransformer:
         - is_weekend: True/False
         """
         print("[6/9] Adding derived fields...")
-        
+
         df = df.copy()
+
+        # Ensure date column is datetime before extracting components
+        if not pd.api.types.is_datetime64_any_dtype(df['date']):
+            df['date'] = pd.to_datetime(df['date'], errors='coerce')
         
         # Extract date components
         df['year'] = df['date'].dt.year
@@ -497,6 +504,35 @@ class ExpenseTransformer:
         print(f"  Final: {after:,} clean rows")
         
         return df
+
+    def _validate_before_return(self, df: pd.DataFrame) -> None:
+        """
+        Pre-load validation: required columns, critical nulls, row-count sanity.
+        Raises ValueError if validation fails.
+        """
+        required = ["date", "amount", "transaction_hash"]
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            raise ValueError(
+                f"Transformed data missing required columns for load: {missing}. "
+                f"Available columns: {list(df.columns)}"
+            )
+
+        null_counts = {c: df[c].isna().sum() for c in required if c in df.columns}
+        critical_nulls = {c: n for c, n in null_counts.items() if n > 0}
+        if critical_nulls:
+            raise ValueError(
+                f"Critical columns have null values (would break load): {critical_nulls}"
+            )
+
+        rows_in = self.stats["rows_input"]
+        rows_out = len(df)
+        if rows_in > 0 and rows_out / rows_in < 0.8:
+            pct_dropped = (1 - rows_out / rows_in) * 100
+            print(
+                f"  WARNING: Transformation dropped {pct_dropped:.0f}% of rows "
+                f"({rows_in - rows_out:,} of {rows_in:,}). Check source data or schema."
+            )
 
 
 # ============================================================================

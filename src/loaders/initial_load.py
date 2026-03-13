@@ -9,7 +9,6 @@ from pathlib import Path
 from datetime import datetime
 import uuid
 import argparse
-import os
 
 # Add src directory to path
 #sys.path.append(str(Path(__file__).parent.parent / 'src'))
@@ -18,14 +17,7 @@ _src_root = Path(__file__).resolve().parent.parent  # -> ...\personal-finance-pi
 if str(_src_root) not in sys.path:
     sys.path.insert(0, str(_src_root))
 
-try:
-    from utils.db_connector import get_db_connector
-except Exception:
-    from utils.db_connector import DatabaseConnection
-    def get_db_connector():
-        # DatabaseConnection typically reads env vars via load_dotenv/os; instantiate with defaults
-        return DatabaseConnection()
-    
+from utils.db_connector import get_db_connector
 from transformers.expense_transformer import ExpenseTransformer
 
 
@@ -169,8 +161,7 @@ class InitialDataLoader:
             cursor = conn.cursor()
             cursor.execute("TRUNCATE TABLE staging.raw_transactions;")
             print("  Staging table truncated")
-        
-       
+
         # Prepare data for staging (minimal processing)
         # Use payment_method (ExpenseTransformer output) or payment_type (legacy CSV)
         payment_col = "payment_method" if "payment_method" in df.columns else "payment_type"
@@ -194,9 +185,6 @@ class InitialDataLoader:
         """Load data to bronze.transactions_raw"""
         
         print(f"\n[LOAD BRONZE] Loading to bronze.transactions_raw...")
-        print(f"  DEBUG - Available columns: {list(df.columns)}")
-        print(f"  DEBUG - Head of DataFrame: {df.head(3)}")
-        df.head(100).to_csv('C:/Users/teodo/Downloads/bronze_sample_debug.csv', index=False)
 
         # Prepare bronze data
         bronze_df = df.copy()
@@ -242,8 +230,11 @@ class InitialDataLoader:
     def _export_duplicate_hashes(self, df: pd.DataFrame, output_file: str = None):
         """Export all records with duplicate transaction_hashes to CSV"""
         
-        if output_file is None:            
-            output_file = r'C:\Users\teodo\Downloads\duplicate_transaction_hashes.csv'
+        if output_file is None:
+            project_root = Path(__file__).resolve().parent.parent.parent
+            out_dir = project_root / "data" / "inspection"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            output_file = str(out_dir / "duplicate_transaction_hashes.csv")
         
         if 'transaction_hash' not in df.columns:
             print("  WARNING - transaction_hash column not found")
@@ -290,9 +281,7 @@ class InitialDataLoader:
         """Load data to silver.transactions"""
         
         print(f"\n[LOAD SILVER] Loading to silver.transactions...")
-        print(f"  DEBUG - Available columns: {list(df.columns)}")
-        #df.head(100).to_csv('C:/Users/teodo/Downloads/silver_sample_debug.csv', index=False)
-        
+
         with self.db.connect() as conn:
             cursor = conn.cursor()
             cursor.execute("TRUNCATE TABLE silver.transactions;")
@@ -303,24 +292,7 @@ class InitialDataLoader:
         
         # Export duplicate hashes BEFORE truncating
         self._export_duplicate_hashes(silver_df)
-        
-        # DEBUG: Check for duplicate transaction_hashes
-        if 'transaction_hash' in silver_df.columns:
-            hash_counts = silver_df['transaction_hash'].value_counts()
-            duplicates = hash_counts[hash_counts > 1]
-            
-            if len(duplicates) > 0:
-                print(f"\n  DEBUG - Found {len(duplicates)} duplicate transaction_hash values:")
-                for hash_val, count in duplicates.items():
-                    print(f"    Hash: {hash_val} | Occurrences: {count}")
-                    # Show the actual records with this hash
-                    dup_records = silver_df[silver_df['transaction_hash'] == hash_val]
-                    print(f"    Records:")
-                    for idx, row in dup_records.iterrows():
-                        print(f"      Row {idx}: {row[['date', 'description', 'amount', 'payee','subcategory']].to_dict()}")
-            else:
-                print(f"\n  DEBUG - No duplicate transaction_hashes found ")
-        
+
         # Rename columns to match silver schema
         rename_map = {
             'date': 'transaction_date',
@@ -364,7 +336,7 @@ class InitialDataLoader:
             'source_raw_id', 'created_at', 'created_by',
             'classification'
         ]
-        
+
         silver_df = silver_df[[c for c in silver_columns if c in silver_df.columns]]
         
         # On initial load, we load everything without deduplication
@@ -485,7 +457,7 @@ class InitialDataLoader:
         print(f"  1. Verify data: psql -U teodor_admin -d finance_warehouse")
         print(f"     SELECT * FROM silver.v_tableau_transactions LIMIT 10;")
         print(f"  2. Connect Tableau to silver.v_tableau_transactions")
-        print(f"  3. For future updates, use: python scripts/incremental_load.py")
+        print(f"  3. For future updates, use: python scripts/run_pipeline.py --mode incremental")
         print("=" * 70)
 
 
