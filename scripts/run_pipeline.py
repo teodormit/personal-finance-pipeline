@@ -22,6 +22,31 @@ if str(_src_path) not in sys.path:
     sys.path.insert(0, str(_src_path))
 
 
+def _preflight_db_check():
+    """Verify DB connection and required schemas exist. Fail fast if not."""
+    from utils.db_connector import get_db_connector
+
+    try:
+        db = get_db_connector()
+        with db.connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT schema_name FROM information_schema.schemata
+                WHERE schema_name IN ('staging', 'bronze', 'silver', 'metadata')
+            """)
+            found = {row[0] for row in cursor.fetchall()}
+        required = {"staging", "bronze", "silver", "metadata"}
+        missing = required - found
+        if missing:
+            raise RuntimeError(
+                f"Database missing required schemas: {sorted(missing)}. "
+                f"Found: {sorted(found)}. Run init scripts first."
+            )
+    except Exception as e:
+        print(f"Pre-flight check failed: {e}")
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run personal finance expense pipeline",
@@ -61,6 +86,9 @@ Examples:
 
     if args.source == "file" and not args.file:
         parser.error("--file is required when --source=file")
+
+    # Pre-flight: verify DB connection and required schemas exist
+    _preflight_db_check()
 
     if args.mode == "full":
         if args.source == "file":

@@ -12,68 +12,73 @@ personal-finance-pipeline/
 │   └── postgres/
 │       └── postgres.conf              # PostgreSQL config
 │
-├── init_scripts/                      # Database initialization
-│   └── 01_create_tables.sql          # Creates expense tables on first run
+├── init_scripts/                      # Database initialization (Docker mount)
+│   └── *.sql                          # Numbered SQL scripts for schema creation
+│
+├── scripts/                           # CLI entry points and utility scripts
+│   ├── sql/                           # Recovery and maintenance SQL
+│   │   └── recover_clean_state.sql   # Reset staging, bronze, silver to clean state
+│   ├── run_pipeline.py                # Main entry point (full/incremental, api/file)
+│   ├── inspect_wallet_export.py       # Inspect Wallet export files
+│   ├── inspect_api_output.py          # Inspect API data at each stage
+│   ├── inspect_incremental_load.py    # Dry-run incremental pipeline
+│   ├── compare_datasets.py            # Compare two expense datasets
+│   ├── deep_analysis.py               # Deeper comparison for missing transactions
+│   └── cleanup.ps1                   # Repo cleanup helper
 │
 ├── src/                               # Source code
 │   ├── __init__.py
-│   ├── pipeline.py                   # Main pipeline orchestration
-│   ├── extractors/                   # Data extraction modules
+│   ├── extractors/                    # Data extraction
 │   │   ├── __init__.py
-│   │   └── google_drive_extractor.py
-│   ├── transformers/                 # Data transformation logic
+│   │   ├── budgetbakers_extractor.py  # BudgetBakers REST API
+│   │   └── api_field_mapper.py        # Map API fields to transformer schema
+│   ├── transformers/                  # Data transformation
 │   │   ├── __init__.py
-│   │   ├── expense_transformer.py    # Main transformation logic
-│   │   └── data_quality.py           # Validation checks
-│   ├── loaders/                      # Data loading modules
+│   │   └── expense_transformer.py     # Clean, enrich, hash transactions
+│   ├── loaders/                       # Database loading
 │   │   ├── __init__.py
-│   │   ├── postgres_loader.py        # PostgreSQL operations
-│   │   └── minio_archiver.py         # MinIO archiving
-│   └── utils/                        # Utility functions
+│   │   ├── initial_load.py            # Full historical load (truncate silver)
+│   │   ├── incremental_load.py        # Append-only load with hash dedup
+│   │   └── duplicates.py              # Export duplicate hashes to CSV
+│   └── utils/                         # Utilities
 │       ├── __init__.py
-│       ├── config.py                 # Configuration management
-│       └── logger.py                 # Logging setup
+│       ├── db_connector.py            # PostgreSQL connection helper
+│       └── hash_generator.py          # Transaction hash for deduplication
 │
-├── data/                             # Local data directory (gitignored)
-│   ├── raw/                          # Downloaded CSVs from Google Drive
-│   ├── processed/                    # Transformed data (temporary)
-│   └── archive/                      # Local backup of processed files
+├── flows/                             # Prefect orchestration
+│   └── expense_pipeline_flow.py      # Scheduled or manual pipeline runs
 │
-├── logs/                             # Application logs (gitignored)
-│   ├── postgres/                     # PostgreSQL logs
-│   └── pipeline/                     # Pipeline execution logs
+├── data/                              # Local data (gitignored)
+│   ├── raw/                           # Wallet app exports (CSV/XLSX)
+│   ├── processed/                     # Temporary API extracts
+│   └── inspection/                   # Pipeline inspection outputs
 │
-├── notebooks/                        # Jupyter notebooks for analysis
-│   └── data_exploration.ipynb        # Initial data exploration
+├── tests/                             # Unit tests
+│   ├── test_api_field_mapper.py
+│   └── test_flatten_record.py
 │
-├── tests/                            # Unit tests (future)
-│   ├── __init__.py
-│   └── test_transformers.py
+├── data_check_scripts/                # Standalone analysis scripts
+│   └── expense_analysis.py           # Dataset comparison and analysis
 │
-├── scripts/                          # Utility scripts
-│   ├── run_pipeline.py               # Main entry point (manual trigger)
-│   ├── setup_minio_buckets.py        # Creates MinIO buckets on first run
-│   └── verify_setup.py               # Validates infrastructure
-│
-├── requirements.txt                  # Python dependencies
-└── data_check_scripts/               # Your existing analysis scripts
-    └── expense_analysis.py           # Keep for reference
+├── architecture_doc.md               # Architecture and design
+├── repo_structure.md                  # This file
+└── requirements.txt                   # Python dependencies
 ```
 
 ## Key Files Purpose
 
-### Core Pipeline Files
-- **`scripts/run_pipeline.py`**: The main script you'll run manually each month
-- **`src/pipeline.py`**: Orchestrates the ETL process
-- **`src/transformers/expense_transformer.py`**: Your improved expense_analysis.py logic
+### Core Pipeline
+- **`scripts/run_pipeline.py`**: Main CLI entry point. Run full or incremental load from API or file.
+- **`src/loaders/initial_load.py`**: Full load (truncate silver, load from file).
+- **`src/loaders/incremental_load.py`**: Incremental load (append only, hash-based dedup).
+- **`src/transformers/expense_transformer.py`**: Cleans and enriches raw data for loading.
 
-### Infrastructure Files
-- **`docker-compose.yml`**: Defines PostgreSQL + MinIO containers
-- **`init_scripts/01_create_tables.sql`**: Auto-creates database schema on first run
-- **`.env`**: Stores passwords and credentials (NEVER commit this!)
+### Infrastructure
+- **`docker-compose.yml`**: PostgreSQL (and optional MinIO) containers.
+- **`init_scripts/`**: SQL scripts for schema creation (staging, bronze, silver, metadata).
+- **`.env`**: Credentials (NEVER commit).
 
-### Data Flow Directories
-- **`data/raw/`**: Downloaded CSVs from Google Drive land here
-- **`data/processed/`**: Temporary staging during transformation
-- **`data/archive/`**: Local backup after successful processing
-- MinIO `archive/` bucket: Cloud-style archive of all processed files
+### Data Flow
+- **`data/raw/`**: Source exports from Wallet app.
+- **`data/processed/`**: Temporary files during API-based full load.
+- **`data/inspection/`**: Duplicate exports, inspect script outputs.

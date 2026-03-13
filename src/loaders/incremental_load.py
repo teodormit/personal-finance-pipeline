@@ -305,8 +305,10 @@ class IncrementalDataLoader:
         if updated > 0 or income_override > 0:
             print(f"  Updated {updated + income_override:,} transactions with category groups")
 
-    def _bulk_insert(self, df: pd.DataFrame, schema: str, table: str) -> int:
-        """Bulk insert DataFrame to PostgreSQL."""
+    def _bulk_insert(self, df: pd.DataFrame, schema: str, table: str, conn=None) -> int:
+        """Bulk insert DataFrame to PostgreSQL.
+        If conn is provided, use it (caller manages commit/close). Otherwise open a new connection.
+        """
         from psycopg2.extras import execute_batch
 
         columns = df.columns.tolist()
@@ -314,6 +316,11 @@ class IncrementalDataLoader:
         placeholders = ", ".join(["%s"] * len(columns))
         columns_str = ", ".join([f'"{c}"' for c in columns])
         query = f'INSERT INTO {schema}.{table} ({columns_str}) VALUES ({placeholders})'
+
+        if conn is not None:
+            cursor = conn.cursor()
+            execute_batch(cursor, query, values, page_size=1000)
+            return len(values)
         with self.db.connect() as conn:
             cursor = conn.cursor()
             execute_batch(cursor, query, values, page_size=1000)

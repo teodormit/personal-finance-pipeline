@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 # Add src directory to path
-_src_root = Path(__file__).resolve().parent.parent / 'src'
+_src_root = Path(__file__).resolve().parent.parent
 if str(_src_root) not in sys.path:
     sys.path.insert(0, str(_src_root))
 
@@ -18,9 +18,12 @@ from utils.db_connector import get_db_connector
 
 def export_duplicate_hashes():
     """Query silver.transactions and export duplicate hashes to CSV"""
-    
+
     db = get_db_connector()
-    output_file = r'C:\Users\teodo\Downloads\duplicate_transaction_hashes.csv'
+    project_root = Path(__file__).resolve().parent.parent.parent
+    out_dir = project_root / "data" / "inspection"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_file = str(out_dir / "duplicate_transaction_hashes.csv")
     
     print(f"[EXPORT] Querying duplicate transaction hashes...")
     
