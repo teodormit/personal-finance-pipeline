@@ -28,20 +28,42 @@ except Exception:
 from transformers.expense_transformer import ExpenseTransformer
 from extractors.budgetbakers_extractor import BudgetBakersExtractor
 
+# Account filter presets: allowed accounts + optional per-account end dates (YYYY-MM-DD inclusive)
+ACCOUNT_FILTER_PRESETS = {
+    "eur": {
+        "allowed_accounts": ["UniCredit Bulbank - 1522449108EUR", "Cash in Euro"],
+        "account_end_dates": {},
+    },
+    "bgn_final": {
+        "allowed_accounts": ["UniCredit Bulbank - 1522449108BGN", "Cash"],
+        "account_end_dates": {
+            "UniCredit Bulbank - 1522449108BGN": "2025-12-22",
+            "Cash": "2025-12-31",
+        },
+    },
+}
+
 
 class IncrementalDataLoader:
     """Handles incremental loading - appends new transactions without truncating silver."""
 
-    def __init__(self, source: str = "api", file_path: str = None):
+    def __init__(
+        self,
+        source: str = "api",
+        file_path: str = None,
+        account_filter: Optional[str] = "eur",
+    ):
         """
         Initialize loader.
 
         Args:
             source: 'api' for BudgetBakers API, 'file' for local file
             file_path: Path to source file (required when source='file')
+            account_filter: 'eur' (default) or 'bgn_final'. 'all' = no filter.
         """
         self.source = source
         self.file_path = Path(file_path) if file_path else None
+        self.account_filter = account_filter
         self.db = get_db_connector()
         self.transformer = ExpenseTransformer()
         self.batch_id = uuid.uuid4()
@@ -85,6 +107,13 @@ class IncrementalDataLoader:
             transformed_df = self._transform(raw_df)
             if len(transformed_df) == 0:
                 print("\n  No valid records after transformation.")
+                self.run_stats["status"] = "SUCCESS"
+                self._log_pipeline_run()
+                return True
+
+            transformed_df = self._apply_account_filter(transformed_df)
+            if len(transformed_df) == 0:
+                print("\n  No records after account filter.")
                 self.run_stats["status"] = "SUCCESS"
                 self._log_pipeline_run()
                 return True
@@ -176,6 +205,44 @@ class IncrementalDataLoader:
         result = self.transformer.transform(df)
         print(f"  Output: {len(result):,} rows")
         return result
+
+    def _apply_account_filter(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Filter by allowed accounts and optional per-account end dates. Returns filtered DataFrame."""
+        return apply_account_filter(df, self.account_filter)
+
+
+def apply_account_filter(df: pd.DataFrame, account_filter: Optional[str]) -> pd.DataFrame:
+    """Filter DataFrame by account preset. Shared by loader and inspect script."""
+    if account_filter in (None, "all"):
+        return df
+
+    preset = ACCOUNT_FILTER_PRESETS.get(account_filter)
+    if preset is None:
+        print(f"\n[ACCOUNT FILTER] Unknown preset '{account_filter}', skipping filter.")
+        return df
+
+    allowed = set(preset["allowed_accounts"])
+    end_dates = preset.get("account_end_dates", {})
+
+    if "account" not in df.columns or "date" not in df.columns:
+        print("\n[ACCOUNT FILTER] Missing 'account' or 'date' column, skipping filter.")
+        return df
+
+    # Ensure date is comparable
+    dates = pd.to_datetime(df["date"], errors="coerce")
+    mask_allowed = df["account"].astype(str).str.strip().isin(allowed)
+
+    mask_date_ok = pd.Series(True, index=df.index)
+    for acc, end_str in end_dates.items():
+        end_ts = pd.Timestamp(end_str)
+        acc_mask = df["account"].astype(str).str.strip() == acc
+        mask_date_ok = mask_date_ok & (~acc_mask | (dates <= end_ts))
+
+    mask = mask_allowed & mask_date_ok
+    filtered = df[mask].copy()
+    dropped = len(df) - len(filtered)
+    print(f"\n[ACCOUNT FILTER] Preset '{account_filter}': kept {len(filtered):,} of {len(df):,} rows (dropped {dropped:,})")
+    return filtered
 
     def _load_staging(self, df: pd.DataFrame, conn):
         """Load to staging (truncate first)."""
@@ -375,12 +442,22 @@ def main():
     parser = argparse.ArgumentParser(description="Incremental load of expense data")
     parser.add_argument("--source", choices=["api", "file"], default="api", help="Extract from API or file")
     parser.add_argument("--file", help="Path to source file (required when --source=file)")
+    parser.add_argument(
+        "--account-filter",
+        choices=["eur", "bgn_final"],
+        default="eur",
+        help="Account filter preset (default: eur)",
+    )
     args = parser.parse_args()
 
     if args.source == "file" and not args.file:
         parser.error("--file is required when --source=file")
 
-    loader = IncrementalDataLoader(source=args.source, file_path=args.file)
+    loader = IncrementalDataLoader(
+        source=args.source,
+        file_path=args.file,
+        account_filter=args.account_filter,
+    )
     success = loader.load()
     sys.exit(0 if success else 1)
 

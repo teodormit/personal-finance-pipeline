@@ -54,6 +54,7 @@ def main():
         epilog="""
 Examples:
   python scripts/run_pipeline.py --mode incremental
+  python scripts/run_pipeline.py --mode incremental --account-filter bgn_final --source file --file data/raw/export.xlsx
   python scripts/run_pipeline.py --mode full --source api
   python scripts/run_pipeline.py --mode full --source file --file data/raw/export.xlsx
         """,
@@ -81,6 +82,12 @@ Examples:
     parser.add_argument(
         "--to-date",
         help="End date for API extraction (YYYY-MM-DD). Default: today",
+    )
+    parser.add_argument(
+        "--account-filter",
+        choices=["eur", "bgn_final"],
+        default="eur",
+        help="Account filter preset for incremental mode (default: eur)",
     )
     args = parser.parse_args()
 
@@ -129,7 +136,11 @@ Examples:
     else:
         from loaders.incremental_load import IncrementalDataLoader
 
-        loader = IncrementalDataLoader(source=args.source, file_path=args.file)
+        loader = IncrementalDataLoader(
+            source=args.source,
+            file_path=args.file,
+            account_filter=args.account_filter,
+        )
         success = loader.load()
 
     sys.exit(0 if success else 1)

@@ -19,6 +19,7 @@ Usage:
     python scripts/inspect_incremental_load.py --days 7
     python scripts/inspect_incremental_load.py --source file --file data/raw/export.csv
     python scripts/inspect_incremental_load.py --from-date 2026-02-01 --to-date 2026-03-01
+    python scripts/inspect_incremental_load.py --account-filter bgn_final   # one-time BGN load
     python scripts/inspect_incremental_load.py --save   # persist CSVs to data/inspection/
 """
 
@@ -82,6 +83,12 @@ def main():
     parser.add_argument("--days", type=int, default=30, help="Days to look back (default: 30)")
     parser.add_argument("--from-date", type=str, help="Start date YYYY-MM-DD (overrides --days)")
     parser.add_argument("--to-date", type=str, help="End date YYYY-MM-DD (default: today)")
+    parser.add_argument(
+        "--account-filter",
+        choices=["eur", "bgn_final"],
+        default="eur",
+        help="Account filter preset (default: eur)",
+    )
     parser.add_argument("--save", action="store_true", help="Save each stage to CSV in data/inspection/")
     args = parser.parse_args()
 
@@ -92,6 +99,7 @@ def main():
     print("  INCREMENTAL LOAD PIPELINE - DRY RUN INSPECTION")
     print(SEPARATOR)
     print(f"Source: {args.source}")
+    print(f"Account filter: {args.account_filter}")
     print(f"Batch ID (simulated): {batch_id}")
 
     # ================================================================
@@ -150,10 +158,17 @@ def main():
     # STAGE 2: Transform
     # ================================================================
     from transformers.expense_transformer import ExpenseTransformer
+    from loaders.incremental_load import apply_account_filter
+
     transformer = ExpenseTransformer()
     transformed_df = transformer.transform(raw_df)
 
     _print_df_summary(transformed_df, "STAGE 2: TRANSFORMED (ExpenseTransformer output)")
+
+    transformed_df = apply_account_filter(transformed_df, args.account_filter)
+    if transformed_df.empty:
+        print("\nNo records after account filter. Nothing to inspect.")
+        return
 
     # Quick sanity checks on transformed data
     print(f"\n--- Sanity Checks ---")
