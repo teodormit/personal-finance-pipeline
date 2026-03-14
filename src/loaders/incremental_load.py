@@ -224,40 +224,6 @@ class IncrementalDataLoader:
         """Filter by allowed accounts and optional per-account end dates. Returns filtered DataFrame."""
         return apply_account_filter(df, self.account_filter)
 
-
-def apply_account_filter(df: pd.DataFrame, account_filter: Optional[str]) -> pd.DataFrame:
-    """Filter DataFrame by account preset. Shared by loader and inspect script."""
-    if account_filter in (None, "all"):
-        return df
-
-    preset = ACCOUNT_FILTER_PRESETS.get(account_filter)
-    if preset is None:
-        print(f"\n[ACCOUNT FILTER] Unknown preset '{account_filter}', skipping filter.")
-        return df
-
-    allowed = set(preset["allowed_accounts"])
-    end_dates = preset.get("account_end_dates", {})
-
-    if "account" not in df.columns or "date" not in df.columns:
-        print("\n[ACCOUNT FILTER] Missing 'account' or 'date' column, skipping filter.")
-        return df
-
-    # Ensure date is comparable
-    dates = pd.to_datetime(df["date"], errors="coerce")
-    mask_allowed = df["account"].astype(str).str.strip().isin(allowed)
-
-    mask_date_ok = pd.Series(True, index=df.index)
-    for acc, end_str in end_dates.items():
-        end_ts = pd.Timestamp(end_str)
-        acc_mask = df["account"].astype(str).str.strip() == acc
-        mask_date_ok = mask_date_ok & (~acc_mask | (dates <= end_ts))
-
-    mask = mask_allowed & mask_date_ok
-    filtered = df[mask].copy()
-    dropped = len(df) - len(filtered)
-    print(f"\n[ACCOUNT FILTER] Preset '{account_filter}': kept {len(filtered):,} of {len(df):,} rows (dropped {dropped:,})")
-    return filtered
-
     def _load_staging(self, df: pd.DataFrame, conn):
         """Load to staging (truncate first)."""
         print("\n[LOAD STAGING] Loading to staging.raw_transactions...")
@@ -446,10 +412,44 @@ def apply_account_filter(df: pd.DataFrame, account_filter: Optional[str]) -> pd.
         print(f"Duration: {duration:.2f} seconds")
         print(f"\nData Flow:")
         print(f"  Extracted:       {self.run_stats['rows_extracted']:,} rows")
-        print(f"  → Bronze:        {self.run_stats['rows_loaded_bronze']:,} rows")
-        print(f"  → Silver:        {self.run_stats['rows_loaded_silver']:,} new rows")
+        print(f"  -> Bronze:       {self.run_stats['rows_loaded_bronze']:,} rows")
+        print(f"  -> Silver:       {self.run_stats['rows_loaded_silver']:,} new rows")
         print(f"  Duplicates:      {self.run_stats['rows_skipped_duplicates']:,} skipped")
         print("=" * 70)
+
+
+def apply_account_filter(df: pd.DataFrame, account_filter: Optional[str]) -> pd.DataFrame:
+    """Filter DataFrame by account preset. Shared by loader and inspect script."""
+    if account_filter in (None, "all"):
+        return df
+
+    preset = ACCOUNT_FILTER_PRESETS.get(account_filter)
+    if preset is None:
+        print(f"\n[ACCOUNT FILTER] Unknown preset '{account_filter}', skipping filter.")
+        return df
+
+    allowed = set(preset["allowed_accounts"])
+    end_dates = preset.get("account_end_dates", {})
+
+    if "account" not in df.columns or "date" not in df.columns:
+        print("\n[ACCOUNT FILTER] Missing 'account' or 'date' column, skipping filter.")
+        return df
+
+    # Ensure date is comparable
+    dates = pd.to_datetime(df["date"], errors="coerce")
+    mask_allowed = df["account"].astype(str).str.strip().isin(allowed)
+
+    mask_date_ok = pd.Series(True, index=df.index)
+    for acc, end_str in end_dates.items():
+        end_ts = pd.Timestamp(end_str)
+        acc_mask = df["account"].astype(str).str.strip() == acc
+        mask_date_ok = mask_date_ok & (~acc_mask | (dates <= end_ts))
+
+    mask = mask_allowed & mask_date_ok
+    filtered = df[mask].copy()
+    dropped = len(df) - len(filtered)
+    print(f"\n[ACCOUNT FILTER] Preset '{account_filter}': kept {len(filtered):,} of {len(df):,} rows (dropped {dropped:,})")
+    return filtered
 
 
 def main():
