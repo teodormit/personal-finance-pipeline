@@ -15,7 +15,7 @@ A self-hosted personal finance data warehouse built with Python, PostgreSQL, and
 ## What This Project Does
 - Extracts expense/income data from the BudgetBakers Wallet app (via REST API or CSV/XLSX export)
 - Transforms it with Python and Pandas
-- Loads it into PostgreSQL following a medallion architecture (staging → bronze → silver)
+- Loads it into PostgreSQL following a medallion architecture (staging → bronze → silver → gold)
 - Data is visualized in Tableau
 
 ## Tech Stack
@@ -37,7 +37,7 @@ A self-hosted personal finance data warehouse built with Python, PostgreSQL, and
 - `staging` — temporary landing area, truncated each run
 - `bronze` — raw data as received, append-only
 - `silver` — cleaned and deduplicated, main analytics layer
-- `gold` — pre-computed aggregations (planned)
+- `gold` — pre-computed aggregations (`transaction_notability` for notable expense scoring)
 - `metadata` — pipeline run logs and data quality issues
 
 ## Deduplication

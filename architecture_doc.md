@@ -305,6 +305,8 @@ CREATE TABLE gold.account_balance_history (
 );
 ```
 
+**Transaction Notability** (`gold.transaction_notability`): Transaction-level scores for "surprising" or notable expenses. One row per EXPENSE `transaction_hash`. Uses a **365-day rolling lookback** per subcategory (only recent history, reducing inflation bias). Each transaction is scored by z-score vs. historical avg/std and flags (new subcategory, new record). Refreshed incrementally after each load (new hashes only) or via `python scripts/refresh_gold_notability.py --full` for a full rebuild. **Staleness**: If `silver.subcategory` or amount is corrected, run full refresh to recompute affected rows.
+
 #### **Audit & Metadata Tables**
 
 ```sql

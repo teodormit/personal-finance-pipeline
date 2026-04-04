@@ -32,10 +32,10 @@ def _preflight_db_check():
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT schema_name FROM information_schema.schemata
-                WHERE schema_name IN ('staging', 'bronze', 'silver', 'metadata')
+                WHERE schema_name IN ('staging', 'bronze', 'silver', 'metadata', 'gold')
             """)
             found = {row[0] for row in cursor.fetchall()}
-        required = {"staging", "bronze", "silver", "metadata"}
+        required = {"staging", "bronze", "silver", "metadata", "gold"}
         missing = required - found
         if missing:
             raise RuntimeError(

@@ -139,6 +139,8 @@ class IncrementalDataLoader:
             finally:
                 conn.close()
 
+            self._refresh_gold_notability()
+
             self.run_stats["status"] = "SUCCESS"
             self._log_pipeline_run()
             self._display_summary()
@@ -292,8 +294,12 @@ class IncrementalDataLoader:
         if len(new_df) == 0:
             print(f"  All {len(df)} records already exist (duplicates). Skipped.")
             self.run_stats["rows_loaded_silver"] = 0
+            self._new_expense_hashes = set()
             self._update_category_mapping(conn)
             return
+
+        expense_mask = new_df["transaction_type"].astype(str).str.upper() == "EXPENSE"
+        self._new_expense_hashes = set(new_df.loc[expense_mask, "transaction_hash"].astype(str))
 
         silver_df = new_df.copy()
         rename_map = {
@@ -328,6 +334,16 @@ class IncrementalDataLoader:
         print(f"  Inserted {rows:,} new rows (skipped {skipped:,} duplicates)")
 
         self._update_category_mapping(conn)
+
+    def _refresh_gold_notability(self):
+        """Refresh gold.transaction_notability for newly loaded expense hashes. Non-fatal."""
+        try:
+            from loaders.gold_notable_loader import refresh_notability_for_hashes
+            n = refresh_notability_for_hashes(self.db, hashes=getattr(self, "_new_expense_hashes", None) or set())
+            if n > 0:
+                print(f"  [GOLD] Updated {n:,} rows in transaction_notability")
+        except Exception as e:
+            print(f"  [GOLD] Warning: Could not refresh transaction_notability: {e}")
 
     def _update_category_mapping(self, conn):
         """Update category and classification from category_mapping for new rows."""
