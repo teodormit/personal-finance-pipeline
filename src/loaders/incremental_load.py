@@ -140,6 +140,7 @@ class IncrementalDataLoader:
                 conn.close()
 
             self._refresh_gold_notability()
+            self._refresh_gold_save_potential()
 
             self.run_stats["status"] = "SUCCESS"
             self._log_pipeline_run()
@@ -344,6 +345,18 @@ class IncrementalDataLoader:
                 print(f"  [GOLD] Updated {n:,} rows in transaction_notability")
         except Exception as e:
             print(f"  [GOLD] Warning: Could not refresh transaction_notability: {e}")
+
+    def _refresh_gold_save_potential(self):
+        """Refresh gold.transaction_save_potential for newly loaded expense hashes. Non-fatal."""
+        try:
+            from loaders.gold_save_potential_loader import refresh_save_potential_for_hashes
+            n = refresh_save_potential_for_hashes(
+                self.db, hashes=getattr(self, "_new_expense_hashes", None) or set()
+            )
+            if n > 0:
+                print(f"  [GOLD] Updated {n:,} rows in transaction_save_potential")
+        except Exception as e:
+            print(f"  [GOLD] Warning: Could not refresh transaction_save_potential: {e}")
 
     def _update_category_mapping(self, conn):
         """Update category and classification from category_mapping for new rows."""

@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **Date:** December 2025  
-**Author:** Data Engineering Team  
+**Author:** Teodor Mitov 
 **Purpose:** Production-grade personal finance data pipeline with immutability, traceability, and data quality assurance
 
 ---
@@ -306,6 +306,8 @@ CREATE TABLE gold.account_balance_history (
 ```
 
 **Transaction Notability** (`gold.transaction_notability`): Transaction-level scores for "surprising" or notable expenses. One row per EXPENSE `transaction_hash`. Uses a **365-day rolling lookback** per subcategory (only recent history, reducing inflation bias). Each transaction is scored by z-score vs. historical avg/std and flags (new subcategory, new record). Refreshed incrementally after each load (new hashes only) or via `python scripts/refresh_gold_notability.py --full` for a full rebuild. **Staleness**: If `silver.subcategory` or amount is corrected, run full refresh to recompute affected rows.
+
+**Transaction Save Potential** (`gold.transaction_save_potential`): Transaction-level scores for "where you could have saved" — complementary to notability. One row per EXPENSE `transaction_hash`. Combines **avoidability** from `classification` (WANT / NEED / MUST), **frequency excess** (this month’s txn count in the subcategory vs average monthly count in the prior 365 days), and **amount excess** (positive z-score from the same 365-day per-subcategory amount history as notability). Composite: `save_potential_score = avoidability*3 + freq_excess*2 + amt_excess*1` (avoidability weighted highest). Refreshed with the pipeline (incremental or full) or via `python scripts/refresh_gold_save_potential.py --full`. **Staleness**: Same as notability — run full refresh after silver/category corrections.
 
 #### **Audit & Metadata Tables**
 

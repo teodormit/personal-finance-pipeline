@@ -37,7 +37,7 @@ A self-hosted personal finance data warehouse built with Python, PostgreSQL, and
 - `staging` — temporary landing area, truncated each run
 - `bronze` — raw data as received, append-only
 - `silver` — cleaned and deduplicated, main analytics layer
-- `gold` — pre-computed aggregations (`transaction_notability` for notable expense scoring)
+- `gold` — pre-computed aggregations (`transaction_notability`, `transaction_save_potential`)
 - `metadata` — pipeline run logs and data quality issues
 
 ## Deduplication

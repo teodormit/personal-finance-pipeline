@@ -77,6 +77,7 @@ class InitialDataLoader:
 
             # Step 5b: Refresh gold.transaction_notability (full rebuild after initial load)
             self._refresh_gold_notability()
+            self._refresh_gold_save_potential()
 
             # Step 6: Log pipeline run
             self.run_stats['status'] = 'SUCCESS'
@@ -380,6 +381,16 @@ class InitialDataLoader:
                 print(f"  [GOLD] Updated {n:,} rows in transaction_notability")
         except Exception as e:
             print(f"  [GOLD] Warning: Could not refresh transaction_notability: {e}")
+
+    def _refresh_gold_save_potential(self):
+        """Refresh gold.transaction_save_potential (full rebuild after initial load). Non-fatal."""
+        try:
+            from loaders.gold_save_potential_loader import refresh_save_potential_for_hashes
+            n = refresh_save_potential_for_hashes(self.db, hashes=None, full=True)
+            if n > 0:
+                print(f"  [GOLD] Updated {n:,} rows in transaction_save_potential")
+        except Exception as e:
+            print(f"  [GOLD] Warning: Could not refresh transaction_save_potential: {e}")
 
     def _bulk_insert(self, df: pd.DataFrame, schema: str, table: str) -> int:
         """
