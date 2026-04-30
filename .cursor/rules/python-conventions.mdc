@@ -1,0 +1,27 @@
+---
+description: Python coding conventions used in this project
+globs: src/**/*.py
+alwaysApply: false
+---
+
+# Python Conventions
+
+## Style
+- Use `print()` for output and progress messages (this is a personal project, not a production service)
+- Write clear docstrings that explain WHAT a function does and WHY, not just the signature
+- Use `pathlib.Path` for file paths, not string concatenation
+- Load env vars with `python-dotenv`; connection helper is `get_db_connector()` from `src/utils/db_connector.py`
+
+## Data Flow
+- Use Pandas DataFrames as the data structure passed between pipeline stages
+- Extractors return a DataFrame; Transformers take and return a DataFrame; Loaders consume a DataFrame
+- Each loader follows: extract → transform → load_staging → load_bronze → load_silver
+
+## Database Access
+- Always use the `DatabaseConnection` context manager: `with self.db.connect() as conn:`
+- Use `%s` placeholders for query parameters — never put variables directly into SQL strings
+- Use `psycopg2.extras.execute_batch()` for inserting many rows at once
+
+## Imports & Path Setup
+- `src/` modules import each other via relative package names: `from utils.db_connector import get_db_connector`
+- Scripts add `src/` to `sys.path` so imports resolve correctly

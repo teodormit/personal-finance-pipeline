@@ -160,6 +160,11 @@ class DatabaseConnection:
             return False
 
 
+def get_db_connector():
+    """Return a DatabaseConnection instance. Used by loaders and pipeline."""
+    return DatabaseConnection()
+
+
 # ============================================================================
 # HOW TO USE THIS CLASS
 # ============================================================================

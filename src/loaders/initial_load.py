@@ -9,7 +9,6 @@ from pathlib import Path
 from datetime import datetime
 import uuid
 import argparse
-import os
 
 # Add src directory to path
 #sys.path.append(str(Path(__file__).parent.parent / 'src'))
@@ -18,14 +17,7 @@ _src_root = Path(__file__).resolve().parent.parent  # -> ...\personal-finance-pi
 if str(_src_root) not in sys.path:
     sys.path.insert(0, str(_src_root))
 
-try:
-    from utils.db_connector import get_db_connector
-except Exception:
-    from utils.db_connector import DatabaseConnection
-    def get_db_connector():
-        # DatabaseConnection typically reads env vars via load_dotenv/os; instantiate with defaults
-        return DatabaseConnection()
-    
+from utils.db_connector import get_db_connector
 from transformers.expense_transformer import ExpenseTransformer
 
 
@@ -82,7 +74,11 @@ class InitialDataLoader:
             
             # Step 5: Load to Silver
             self._load_silver(transformed_df)
-            
+
+            # Step 5b: Refresh gold.transaction_notability (full rebuild after initial load)
+            self._refresh_gold_notability()
+            self._refresh_gold_save_potential()
+
             # Step 6: Log pipeline run
             self.run_stats['status'] = 'SUCCESS'
             self._log_pipeline_run()
@@ -169,12 +165,13 @@ class InitialDataLoader:
             cursor = conn.cursor()
             cursor.execute("TRUNCATE TABLE staging.raw_transactions;")
             print("  Staging table truncated")
-        
-       
+
         # Prepare data for staging (minimal processing)
-        staging_df = df.copy()
-        staging_df = df[['date', 'description', 'type', 'payee', 'amount', 'labels', 'account', 'subcategory', 'currency', 'payment_type']].copy()
-        staging_df = staging_df.rename(columns={'payment_type': 'payment','description': 'note', 'subcategory': 'category' })
+        # Use payment_method (ExpenseTransformer output) or payment_type (legacy CSV)
+        payment_col = "payment_method" if "payment_method" in df.columns else "payment_type"
+        staging_cols = ['date', 'description', 'type', 'payee', 'amount', 'labels', 'account', 'subcategory', 'currency', payment_col]
+        staging_df = df[[c for c in staging_cols if c in df.columns]].copy()
+        staging_df = staging_df.rename(columns={payment_col: 'payment', 'description': 'note', 'subcategory': 'category' })
         staging_df['source_file'] = self.file_path.name
         staging_df['batch_id'] = str(self.batch_id)
         staging_df['loaded_at'] = datetime.now()
@@ -192,26 +189,24 @@ class InitialDataLoader:
         """Load data to bronze.transactions_raw"""
         
         print(f"\n[LOAD BRONZE] Loading to bronze.transactions_raw...")
-        print(f"  DEBUG - Available columns: {list(df.columns)}")
-        print(f"  DEBUG - Head of DataFrame: {df.head(3)}")
-        df.head(100).to_csv('C:/Users/teodo/Downloads/bronze_sample_debug.csv', index=False)
 
         # Prepare bronze data
         bronze_df = df.copy()
         
         # Rename columns to match bronze schema
-        bronze_df = bronze_df.rename(columns={
+        rename_map = {
             'date': 'transaction_date',
             'note': 'description',
-            #'type': 'transaction_type',
             'payee': 'payee',
             'amount': 'amount',
             'labels': 'labels',
             'account': 'account_name',
             'subcategory': 'subcategory',
             'currency': 'currency',
-            'payment_type': 'payment_method'
-        })
+        }
+        if "payment_type" in bronze_df.columns and "payment_method" not in bronze_df.columns:
+            rename_map["payment_type"] = "payment_method"
+        bronze_df = bronze_df.rename(columns=rename_map)
         
         # Add metadata
         bronze_df['source_file'] = self.file_path.name
@@ -239,8 +234,11 @@ class InitialDataLoader:
     def _export_duplicate_hashes(self, df: pd.DataFrame, output_file: str = None):
         """Export all records with duplicate transaction_hashes to CSV"""
         
-        if output_file is None:            
-            output_file = r'C:\Users\teodo\Downloads\duplicate_transaction_hashes.csv'
+        if output_file is None:
+            project_root = Path(__file__).resolve().parent.parent.parent
+            out_dir = project_root / "data" / "inspection"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            output_file = str(out_dir / "duplicate_transaction_hashes.csv")
         
         if 'transaction_hash' not in df.columns:
             print("  WARNING - transaction_hash column not found")
@@ -287,9 +285,7 @@ class InitialDataLoader:
         """Load data to silver.transactions"""
         
         print(f"\n[LOAD SILVER] Loading to silver.transactions...")
-        print(f"  DEBUG - Available columns: {list(df.columns)}")
-        #df.head(100).to_csv('C:/Users/teodo/Downloads/silver_sample_debug.csv', index=False)
-        
+
         with self.db.connect() as conn:
             cursor = conn.cursor()
             cursor.execute("TRUNCATE TABLE silver.transactions;")
@@ -300,28 +296,10 @@ class InitialDataLoader:
         
         # Export duplicate hashes BEFORE truncating
         self._export_duplicate_hashes(silver_df)
-        
-        # DEBUG: Check for duplicate transaction_hashes
-        if 'transaction_hash' in silver_df.columns:
-            hash_counts = silver_df['transaction_hash'].value_counts()
-            duplicates = hash_counts[hash_counts > 1]
-            
-            if len(duplicates) > 0:
-                print(f"\n  DEBUG - Found {len(duplicates)} duplicate transaction_hash values:")
-                for hash_val, count in duplicates.items():
-                    print(f"    Hash: {hash_val} | Occurrences: {count}")
-                    # Show the actual records with this hash
-                    dup_records = silver_df[silver_df['transaction_hash'] == hash_val]
-                    print(f"    Records:")
-                    for idx, row in dup_records.iterrows():
-                        print(f"      Row {idx}: {row[['date', 'description', 'amount', 'payee','subcategory']].to_dict()}")
-            else:
-                print(f"\n  DEBUG - No duplicate transaction_hashes found ")
-        
+
         # Rename columns to match silver schema
-        silver_df = silver_df.rename(columns={
+        rename_map = {
             'date': 'transaction_date',
-            'note': 'description',
             'transaction_type': 'transaction_type',
             'amount': 'amount',
             'amount_abs': 'amount_abs',
@@ -332,9 +310,13 @@ class InitialDataLoader:
             'payee': 'payee',
             'subcategory': 'subcategory',
             'account': 'account_name',
-            'payment_type': 'payment_method',
             'labels': 'labels'
-        })
+        }
+        if 'note' in silver_df.columns:
+            rename_map['note'] = 'description'
+        if 'payment_type' in silver_df.columns and 'payment_method' not in silver_df.columns:
+            rename_map['payment_type'] = 'payment_method'
+        silver_df = silver_df.rename(columns=rename_map)
         
         # Add metadata
         silver_df['created_at'] = datetime.now()
@@ -349,6 +331,8 @@ class InitialDataLoader:
             'transaction_hash', 'transaction_date', 'transaction_type',
             'amount', 'amount_abs', 'currency',
             'amount_eur', 'amount_abs_eur', 'eur_conversion_rate',
+            'amount_bgn', 'amount_abs_bgn',
+            'source_record_id', 'category_id',
             'description', 'payee', 'subcategory',
             'account_name', 'payment_method', 'labels',
             'year', 'month', 'quarter', 'year_month',
@@ -356,8 +340,8 @@ class InitialDataLoader:
             'source_raw_id', 'created_at', 'created_by',
             'classification'
         ]
-        
-        silver_df = silver_df[silver_columns]
+
+        silver_df = silver_df[[c for c in silver_columns if c in silver_df.columns]]
         
         # On initial load, we load everything without deduplication
         # (deduplication will be handled in incremental loads)
@@ -372,15 +356,42 @@ class InitialDataLoader:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE silver.transactions t
-                SET category = cm.category
-                    ,classification = cm.classification
+                SET category = cm.category, classification = cm.classification
                 FROM silver.category_mapping cm
                 WHERE t.subcategory = cm.subcategory
                   AND (t.category IS NULL OR t.classification IS NULL);
             """)
             updated = cursor.rowcount
-            print(f"  Updated {updated:,} transactions with category groups")
-    
+            cursor.execute("""
+                UPDATE silver.transactions
+                SET category = 'Income', classification = 'WANT'
+                WHERE transaction_type = 'INCOME'
+                  AND subcategory IN ('Child Support', 'Lottery, gambling')
+                  AND (category IS NULL OR category != 'Income');
+            """)
+            income_override = cursor.rowcount
+            print(f"  Updated {updated + income_override:,} transactions with category groups")
+
+    def _refresh_gold_notability(self):
+        """Refresh gold.transaction_notability (full rebuild after initial load). Non-fatal."""
+        try:
+            from loaders.gold_notable_loader import refresh_notability_for_hashes
+            n = refresh_notability_for_hashes(self.db, hashes=None, full=True)
+            if n > 0:
+                print(f"  [GOLD] Updated {n:,} rows in transaction_notability")
+        except Exception as e:
+            print(f"  [GOLD] Warning: Could not refresh transaction_notability: {e}")
+
+    def _refresh_gold_save_potential(self):
+        """Refresh gold.transaction_save_potential (full rebuild after initial load). Non-fatal."""
+        try:
+            from loaders.gold_save_potential_loader import refresh_save_potential_for_hashes
+            n = refresh_save_potential_for_hashes(self.db, hashes=None, full=True)
+            if n > 0:
+                print(f"  [GOLD] Updated {n:,} rows in transaction_save_potential")
+        except Exception as e:
+            print(f"  [GOLD] Warning: Could not refresh transaction_save_potential: {e}")
+
     def _bulk_insert(self, df: pd.DataFrame, schema: str, table: str) -> int:
         """
         Bulk insert DataFrame to PostgreSQL table
@@ -463,14 +474,14 @@ class InitialDataLoader:
         print(f"Duration: {duration:.2f} seconds")
         print(f"\nData Flow:")
         print(f"  Source file:     {self.run_stats['rows_extracted']:,} rows")
-        print(f"  → Staging:       {self.run_stats['rows_staged']:,} rows")
-        print(f"  → Bronze:        {self.run_stats['rows_loaded_bronze']:,} rows")
-        print(f"  → Silver:        {self.run_stats['rows_loaded_silver']:,} rows")
+        print(f"  -> Staging:       {self.run_stats['rows_staged']:,} rows")
+        print(f"  -> Bronze:        {self.run_stats['rows_loaded_bronze']:,} rows")
+        print(f"  -> Silver:        {self.run_stats['rows_loaded_silver']:,} rows")
         print(f"\nNext Steps:")
         print(f"  1. Verify data: psql -U teodor_admin -d finance_warehouse")
         print(f"     SELECT * FROM silver.v_tableau_transactions LIMIT 10;")
         print(f"  2. Connect Tableau to silver.v_tableau_transactions")
-        print(f"  3. For future updates, use: python scripts/incremental_load.py")
+        print(f"  3. For future updates, use: python scripts/run_pipeline.py --mode incremental")
         print("=" * 70)
 
 
