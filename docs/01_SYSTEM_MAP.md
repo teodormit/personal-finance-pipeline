@@ -8,34 +8,32 @@
 5. Visualize in Tableau
 
 ## Runtime Entry Points
-- `scripts/run_pipeline.py` — unified runner for full and incremental loads.
-- `scripts/refresh_gold_notability.py` — full rebuild of notability table.
-- `scripts/refresh_gold_save_potential.py` — full rebuild of save potential table.
-- `scripts/inspect_incremental_load.py` — dry-run inspection utility.
+- `scripts/run_pipeline.py` ï¿½ unified runner for full and incremental loads, and gold-only full rebuilds via `--refresh-gold {notability,save-potential,both}`.
+- `scripts/inspect_incremental_load.py` ï¿½ dry-run inspection utility.
 
 ## Main Code Domains
 - `src/extractors/`
-  - `budgetbakers_extractor.py` — REST extraction and normalization.
-  - `api_field_mapper.py` — maps raw API fields to transformer schema.
+  - `budgetbakers_extractor.py` ï¿½ REST extraction and normalization.
+  - `api_field_mapper.py` ï¿½ maps raw API fields to transformer schema.
 - `src/transformers/`
-  - `expense_transformer.py` — core 9-step cleaning/enrichment.
-  - `notable_transactions_transformer.py` — notability scoring.
-  - `save_potential_transformer.py` — save-potential scoring.
+  - `expense_transformer.py` ï¿½ core 9-step cleaning/enrichment.
+  - `notable_transactions_transformer.py` ï¿½ notability scoring.
+  - `save_potential_transformer.py` ï¿½ save-potential scoring.
 - `src/loaders/`
-  - `initial_load.py` — full load path (truncate/reload silver).
-  - `incremental_load.py` — append-only + dedupe path.
-  - `gold_notable_loader.py` — gold upsert for notability.
-  - `gold_save_potential_loader.py` — gold upsert for save potential.
+  - `initial_load.py` ï¿½ full load path (truncate/reload silver).
+  - `incremental_load.py` ï¿½ append-only + dedupe path.
+  - `gold_notable_loader.py` ï¿½ gold upsert for notability.
+  - `gold_save_potential_loader.py` ï¿½ gold upsert for save potential.
 - `src/utils/`
-  - `db_connector.py` — DB connection manager.
-  - `hash_generator.py` — `transaction_hash` generation.
+  - `db_connector.py` ï¿½ DB connection manager.
+  - `hash_generator.py` ï¿½ `transaction_hash` generation.
 
 ## Data Layers
-- `staging` — transient landing table(s), truncated each run.
-- `bronze` — immutable raw archive.
-- `silver` — cleaned + deduped analytical base.
-- `gold` — transaction-level intelligence tables.
-- `metadata` — pipeline run and quality telemetry.
+- `staging` ï¿½ transient landing table(s), truncated each run.
+- `bronze` ï¿½ immutable raw archive.
+- `silver` ï¿½ cleaned + deduped analytical base.
+- `gold` ï¿½ transaction-level intelligence tables.
+- `metadata` ï¿½ pipeline run and quality telemetry.
 
 ## Gold Refresh Behavior
 - Incremental runs refresh gold for newly inserted expense hashes.

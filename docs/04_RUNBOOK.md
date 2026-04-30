@@ -42,8 +42,9 @@ python scripts/run_pipeline.py --mode full --source api --from-date 2024-01-01 -
 
 ### 6) Manual gold full refresh (repair/recompute)
 ```bash
-python scripts/refresh_gold_notability.py --full
-python scripts/refresh_gold_save_potential.py --full
+python scripts/run_pipeline.py --refresh-gold notability
+python scripts/run_pipeline.py --refresh-gold save-potential
+python scripts/run_pipeline.py --refresh-gold both
 ```
 
 ## When to Use Manual Gold Refresh

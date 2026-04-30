@@ -9,6 +9,11 @@ Usage:
   python scripts/run_pipeline.py --mode incremental
   python scripts/run_pipeline.py --mode full --source api
   python scripts/run_pipeline.py --mode full --source file --file data/raw/export.xlsx
+
+Gold-only full refresh (skips extract/silver, recomputes gold):
+  python scripts/run_pipeline.py --refresh-gold notability
+  python scripts/run_pipeline.py --refresh-gold save-potential
+  python scripts/run_pipeline.py --refresh-gold both --window-days 365
 """
 
 import argparse
@@ -89,6 +94,17 @@ Examples:
         default="eur",
         help="Account filter preset for incremental mode (default: eur)",
     )
+    parser.add_argument(
+        "--refresh-gold",
+        choices=["notability", "save-potential", "both"],
+        help="Skip extract/silver and only do a full rebuild of the chosen gold table(s)",
+    )
+    parser.add_argument(
+        "--window-days",
+        type=int,
+        default=365,
+        help="Lookback window in days for gold refresh (default: 365)",
+    )
     args = parser.parse_args()
 
     if args.source == "file" and not args.file:
@@ -96,6 +112,37 @@ Examples:
 
     # Pre-flight: verify DB connection and required schemas exist
     _preflight_db_check()
+
+    # Gold-only refresh path: skip extract / silver entirely.
+    if args.refresh_gold:
+        from utils.db_connector import get_db_connector
+
+        db = get_db_connector()
+        targets = (
+            ["notability", "save-potential"]
+            if args.refresh_gold == "both"
+            else [args.refresh_gold]
+        )
+        for target in targets:
+            if target == "notability":
+                from loaders.gold_notable_loader import refresh_notability_for_hashes
+
+                n = refresh_notability_for_hashes(
+                    db, hashes=None, full=True, window_days=args.window_days
+                )
+                print(f"\n[GOLD] Refreshed {n:,} rows in gold.transaction_notability")
+            else:
+                from loaders.gold_save_potential_loader import (
+                    refresh_save_potential_for_hashes,
+                )
+
+                n = refresh_save_potential_for_hashes(
+                    db, hashes=None, full=True, window_days=args.window_days
+                )
+                print(
+                    f"\n[GOLD] Refreshed {n:,} rows in gold.transaction_save_potential"
+                )
+        sys.exit(0)
 
     if args.mode == "full":
         if args.source == "file":

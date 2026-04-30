@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-05-01
+
+### Changed
+- Consolidated standalone gold refresh scripts into `scripts/run_pipeline.py` via the new `--refresh-gold {notability,save-potential,both}` flag. `--window-days` carried over (default 365).
+- Removed `scripts/refresh_gold_notability.py` and `scripts/refresh_gold_save_potential.py`.
+
+### Removed
+- `scripts/compare_datasets.py`, `scripts/deep_analysis.py`, `scripts/inspect_wallet_export.py` moved to `scripts/archive/` (BGN→EUR migration-era utilities, kept for git history only).
+
 ## 2026-04-30
 
 ### Added

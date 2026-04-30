@@ -223,7 +223,10 @@ def _upsert_to_gold(conn, df: pd.DataFrame) -> int:
 
 
 def main():
-    """Standalone entry point for manual refresh (e.g. scripts/refresh_gold_notability.py)."""
+    """Standalone entry point for manual refresh (e.g. `python -m loaders.gold_notable_loader --full`).
+
+    For normal use prefer `python scripts/run_pipeline.py --refresh-gold notability`.
+    """
     import argparse
     from utils.db_connector import get_db_connector
 
