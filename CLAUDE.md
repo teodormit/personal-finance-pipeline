@@ -121,5 +121,5 @@ Use `%s` placeholders for query parameters — never interpolate variables into 
 ## Diagnostic Scripts
 
 `scripts/inspect_incremental_load.py` — dry-run inspection without writing.
-`scripts/inspect_api_output.py`, `scripts/inspect_wallet_export.py` — raw data inspection.
-`scripts/compare_datasets.py`, `scripts/deep_analysis.py` — ad-hoc analysis utilities.
+`scripts/inspect_api_output.py` — raw API data inspection.
+`scripts/archive/` — retired one-off utilities kept for git history (BGN→EUR migration era).
