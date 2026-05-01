@@ -3,50 +3,34 @@ Initial Data Load Script
 Loads historical expense data into the data warehouse
 """
 
-import pandas as pd
-import sys
-from pathlib import Path
-from datetime import datetime
-import uuid
 import argparse
+import sys
+from datetime import datetime
+from pathlib import Path
 
-# Add src directory to path
-#sys.path.append(str(Path(__file__).parent.parent / 'src'))
+import pandas as pd
 
 _src_root = Path(__file__).resolve().parent.parent  # -> ...\personal-finance-pipeline\src
 if str(_src_root) not in sys.path:
     sys.path.insert(0, str(_src_root))
 
-from utils.db_connector import get_db_connector
-from transformers.expense_transformer import ExpenseTransformer
+from loaders.base_loader import BaseLoader
 
 
-class InitialDataLoader:
+class InitialDataLoader(BaseLoader):
     """Handles initial loading of historical data"""
-    
+
+    created_by = "initial_load_script"
+
     def __init__(self, file_path: str):
         """
         Initialize loader
-        
+
         Args:
             file_path: Path to source Excel/CSV file
         """
         self.file_path = Path(file_path)
-        self.db = get_db_connector()
-        self.transformer = ExpenseTransformer()
-        self.batch_id = uuid.uuid4()
-        self.run_stats = {
-            'run_id': self.batch_id,
-            'start_time': datetime.now(),
-            'source_file': self.file_path.name,
-            'file_size_bytes': None,
-            'rows_extracted': 0,
-            'rows_staged': 0,
-            'rows_loaded_bronze': 0,
-            'rows_loaded_silver': 0,
-            'rows_skipped_duplicates': 0,
-            'status': 'RUNNING'
-        }
+        super().__init__(source_file_name=self.file_path.name)
     
     def load(self):
         """Execute the initial load pipeline"""
@@ -346,143 +330,35 @@ class InitialDataLoader:
         # On initial load, we load everything without deduplication
         # (deduplication will be handled in incremental loads)
         rows_loaded = self._bulk_insert(silver_df, 'silver', 'transactions')
-        
+
         self.run_stats['rows_loaded_silver'] = rows_loaded
         print(f"  Loaded {rows_loaded:,} rows to silver")
-        
+
         # Update category and classification fields from category_mapping
-        print("  Updating category hierarchy...")
         with self.db.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE silver.transactions t
-                SET category = cm.category, classification = cm.classification
-                FROM silver.category_mapping cm
-                WHERE t.subcategory = cm.subcategory
-                  AND (t.category IS NULL OR t.classification IS NULL);
-            """)
-            updated = cursor.rowcount
-            cursor.execute("""
-                UPDATE silver.transactions
-                SET category = 'Income', classification = 'WANT'
-                WHERE transaction_type = 'INCOME'
-                  AND subcategory IN ('Child Support', 'Lottery, gambling')
-                  AND (category IS NULL OR category != 'Income');
-            """)
-            income_override = cursor.rowcount
-            print(f"  Updated {updated + income_override:,} transactions with category groups")
+            self._update_category_mapping(conn)
+            conn.commit()
 
     def _refresh_gold_notability(self):
         """Refresh gold.transaction_notability (full rebuild after initial load). Non-fatal."""
-        try:
-            from loaders.gold_notable_loader import refresh_notability_for_hashes
-            n = refresh_notability_for_hashes(self.db, hashes=None, full=True)
-            if n > 0:
-                print(f"  [GOLD] Updated {n:,} rows in transaction_notability")
-        except Exception as e:
-            print(f"  [GOLD] Warning: Could not refresh transaction_notability: {e}")
+        super()._refresh_gold_notability(full=True)
 
     def _refresh_gold_save_potential(self):
         """Refresh gold.transaction_save_potential (full rebuild after initial load). Non-fatal."""
-        try:
-            from loaders.gold_save_potential_loader import refresh_save_potential_for_hashes
-            n = refresh_save_potential_for_hashes(self.db, hashes=None, full=True)
-            if n > 0:
-                print(f"  [GOLD] Updated {n:,} rows in transaction_save_potential")
-        except Exception as e:
-            print(f"  [GOLD] Warning: Could not refresh transaction_save_potential: {e}")
+        super()._refresh_gold_save_potential(full=True)
 
-    def _bulk_insert(self, df: pd.DataFrame, schema: str, table: str) -> int:
-        """
-        Bulk insert DataFrame to PostgreSQL table
-        
-        Args:
-            df: DataFrame to insert
-            schema: Schema name
-            table: Table name
-        
-        Returns:
-            Number of rows inserted
-        """
-        
-        from psycopg2.extras import execute_batch
-        
-        # Convert DataFrame to list of tuples
-        columns = df.columns.tolist()
-        values = df.values.tolist()
-        
-        # Build INSERT query
-        placeholders = ', '.join(['%s'] * len(columns))
-        columns_str = ', '.join([f'"{col}"' for col in columns])
-        query = f'INSERT INTO {schema}.{table} ({columns_str}) VALUES ({placeholders})'
-        
-        # Execute batch insert
-        with self.db.connect() as conn:
-            cursor = conn.cursor()
-            execute_batch(cursor, query, values, page_size=1000)
-            return len(values)
-    
-    def _log_pipeline_run(self):
-        """Log pipeline execution to metadata.pipeline_runs"""
-        
-        print(f"\n[LOG] Recording pipeline run...")
-        
-        # Calculate duration
-        end_time = datetime.now()
-        duration = (end_time - self.run_stats['start_time']).total_seconds()
-        
-        # Prepare log data
-        log_data = {
-            'run_id': str(self.run_stats['run_id']),
-            'run_timestamp': self.run_stats['start_time'],
-            'source_file': self.run_stats['source_file'],
-            'file_size_bytes': self.run_stats['file_size_bytes'],
-            'status': self.run_stats['status'],
-            'rows_extracted': self.run_stats['rows_extracted'],
-            'rows_staged': self.run_stats['rows_staged'],
-            'rows_loaded_bronze': self.run_stats['rows_loaded_bronze'],
-            'rows_loaded_silver': self.run_stats['rows_loaded_silver'],
-            'rows_skipped_duplicates': self.run_stats['rows_skipped_duplicates'],
-            'rows_failed_validation': 0,
-            'start_time': self.run_stats['start_time'],
-            'end_time': end_time,
-            'duration_seconds': duration,
-            'error_message': self.run_stats.get('error_message')            
-        }
-        
-        # Insert to metadata table
-        columns = ', '.join([f'"{k}"' for k in log_data.keys()])
-        placeholders = ', '.join(['%s'] * len(log_data))
-        query = f"INSERT INTO metadata.pipeline_runs ({columns}) VALUES ({placeholders})"
-        
-        with self.db.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, list(log_data.values()))
-        
-        print(f"  Pipeline run logged (ID: {self.run_stats['run_id']})")
-    
+
     def _display_summary(self):
-        """Display final summary"""
-        
-        end_time = datetime.now()
-        duration = (end_time - self.run_stats['start_time']).total_seconds()
-        
-        print("\n" + "=" * 70)
-        print("INITIAL LOAD COMPLETE")
-        print("=" * 70)
-        print(f"Status: {self.run_stats['status']}")
-        print(f"Duration: {duration:.2f} seconds")
-        print(f"\nData Flow:")
-        print(f"  Source file:     {self.run_stats['rows_extracted']:,} rows")
-        print(f"  -> Staging:       {self.run_stats['rows_staged']:,} rows")
-        print(f"  -> Bronze:        {self.run_stats['rows_loaded_bronze']:,} rows")
-        print(f"  -> Silver:        {self.run_stats['rows_loaded_silver']:,} rows")
-        print(f"\nNext Steps:")
-        print(f"  1. Verify data: psql -U teodor_admin -d finance_warehouse")
-        print(f"     SELECT * FROM silver.v_tableau_transactions LIMIT 10;")
-        print(f"  2. Connect Tableau to silver.v_tableau_transactions")
-        print(f"  3. For future updates, use: python scripts/run_pipeline.py --mode incremental")
-        print("=" * 70)
+        super()._display_summary(
+            "INITIAL LOAD COMPLETE",
+            extra_lines=[
+                "\nNext Steps:",
+                "  1. Verify data: psql -U teodor_admin -d finance_warehouse",
+                "     SELECT * FROM silver.v_tableau_transactions LIMIT 10;",
+                "  2. Connect Tableau to silver.v_tableau_transactions",
+                "  3. For future updates, use: python scripts/run_pipeline.py --mode incremental",
+            ],
+        )
 
 
 def main():

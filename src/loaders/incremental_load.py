@@ -4,29 +4,20 @@ Loads only new transactions without truncating silver.
 Uses transaction_hash for deduplication.
 """
 
-import pandas as pd
-import sys
-from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Optional
-import uuid
 import argparse
-import os
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional
+
+import pandas as pd
 
 _src_root = Path(__file__).resolve().parent.parent
 if str(_src_root) not in sys.path:
     sys.path.insert(0, str(_src_root))
 
-try:
-    from utils.db_connector import get_db_connector
-except Exception:
-    from utils.db_connector import DatabaseConnection
-
-    def get_db_connector():
-        return DatabaseConnection()
-
-from transformers.expense_transformer import ExpenseTransformer
 from extractors.budgetbakers_extractor import BudgetBakersExtractor
+from loaders.base_loader import BaseLoader
 
 # Account filter presets: allowed accounts + optional per-account end dates (YYYY-MM-DD inclusive)
 ACCOUNT_FILTER_PRESETS = {
@@ -44,8 +35,10 @@ ACCOUNT_FILTER_PRESETS = {
 }
 
 
-class IncrementalDataLoader:
+class IncrementalDataLoader(BaseLoader):
     """Handles incremental loading - appends new transactions without truncating silver."""
+
+    created_by = "incremental_load_script"
 
     def __init__(
         self,
@@ -70,21 +63,13 @@ class IncrementalDataLoader:
         self.account_filter = account_filter
         self.from_date = from_date
         self.to_date = to_date
-        self.db = get_db_connector()
-        self.transformer = ExpenseTransformer()
-        self.batch_id = uuid.uuid4()
-        self.run_stats = {
-            "run_id": self.batch_id,
-            "start_time": datetime.now(),
-            "source_file": "budgetbakers_api" if source == "api" else (self.file_path.name if self.file_path else "unknown"),
-            "file_size_bytes": None,
-            "rows_extracted": 0,
-            "rows_staged": 0,
-            "rows_loaded_bronze": 0,
-            "rows_loaded_silver": 0,
-            "rows_skipped_duplicates": 0,
-            "status": "RUNNING",
-        }
+
+        source_file_name = (
+            "budgetbakers_api"
+            if source == "api"
+            else (self.file_path.name if self.file_path else "unknown")
+        )
+        super().__init__(source_file_name=source_file_name)
 
     def load(self) -> bool:
         """Execute the incremental load pipeline.
@@ -338,113 +323,18 @@ class IncrementalDataLoader:
 
     def _refresh_gold_notability(self):
         """Refresh gold.transaction_notability for newly loaded expense hashes. Non-fatal."""
-        try:
-            from loaders.gold_notable_loader import refresh_notability_for_hashes
-            n = refresh_notability_for_hashes(self.db, hashes=getattr(self, "_new_expense_hashes", None) or set())
-            if n > 0:
-                print(f"  [GOLD] Updated {n:,} rows in transaction_notability")
-        except Exception as e:
-            print(f"  [GOLD] Warning: Could not refresh transaction_notability: {e}")
+        super()._refresh_gold_notability(
+            hashes=getattr(self, "_new_expense_hashes", None) or set()
+        )
 
     def _refresh_gold_save_potential(self):
         """Refresh gold.transaction_save_potential for newly loaded expense hashes. Non-fatal."""
-        try:
-            from loaders.gold_save_potential_loader import refresh_save_potential_for_hashes
-            n = refresh_save_potential_for_hashes(
-                self.db, hashes=getattr(self, "_new_expense_hashes", None) or set()
-            )
-            if n > 0:
-                print(f"  [GOLD] Updated {n:,} rows in transaction_save_potential")
-        except Exception as e:
-            print(f"  [GOLD] Warning: Could not refresh transaction_save_potential: {e}")
-
-    def _update_category_mapping(self, conn):
-        """Update category and classification from category_mapping for new rows."""
-        print("  Updating category hierarchy...")
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE silver.transactions t
-            SET category = cm.category, classification = cm.classification
-            FROM silver.category_mapping cm
-            WHERE t.subcategory = cm.subcategory
-              AND (t.category IS NULL OR t.classification IS NULL);
-        """)
-        updated = cursor.rowcount
-        cursor.execute("""
-            UPDATE silver.transactions
-            SET category = 'Income', classification = 'WANT'
-            WHERE transaction_type = 'INCOME'
-              AND subcategory IN ('Child Support', 'Lottery, gambling')
-              AND (category IS NULL OR category != 'Income');
-        """)
-        income_override = cursor.rowcount
-        if updated > 0 or income_override > 0:
-            print(f"  Updated {updated + income_override:,} transactions with category groups")
-
-    def _bulk_insert(self, df: pd.DataFrame, schema: str, table: str, conn=None) -> int:
-        """Bulk insert DataFrame to PostgreSQL.
-        If conn is provided, use it (caller manages commit/close). Otherwise open a new connection.
-        """
-        from psycopg2.extras import execute_batch
-
-        columns = df.columns.tolist()
-        values = df.values.tolist()
-        placeholders = ", ".join(["%s"] * len(columns))
-        columns_str = ", ".join([f'"{c}"' for c in columns])
-        query = f'INSERT INTO {schema}.{table} ({columns_str}) VALUES ({placeholders})'
-
-        if conn is not None:
-            cursor = conn.cursor()
-            execute_batch(cursor, query, values, page_size=1000)
-            return len(values)
-        with self.db.connect() as conn:
-            cursor = conn.cursor()
-            execute_batch(cursor, query, values, page_size=1000)
-        return len(values)
-
-    def _log_pipeline_run(self):
-        """Log to metadata.pipeline_runs."""
-        end_time = datetime.now()
-        duration = (end_time - self.run_stats["start_time"]).total_seconds()
-        log_data = {
-            "run_id": str(self.run_stats["run_id"]),
-            "run_timestamp": self.run_stats["start_time"],
-            "source_file": self.run_stats["source_file"],
-            "file_size_bytes": self.run_stats["file_size_bytes"],
-            "status": self.run_stats["status"],
-            "rows_extracted": self.run_stats["rows_extracted"],
-            "rows_staged": self.run_stats["rows_staged"],
-            "rows_loaded_bronze": self.run_stats["rows_loaded_bronze"],
-            "rows_loaded_silver": self.run_stats["rows_loaded_silver"],
-            "rows_skipped_duplicates": self.run_stats["rows_skipped_duplicates"],
-            "rows_failed_validation": 0,
-            "start_time": self.run_stats["start_time"],
-            "end_time": end_time,
-            "duration_seconds": duration,
-            "error_message": self.run_stats.get("error_message"),
-        }
-        cols = ", ".join([f'"{k}"' for k in log_data.keys()])
-        placeholders = ", ".join(["%s"] * len(log_data))
-        query = f"INSERT INTO metadata.pipeline_runs ({cols}) VALUES ({placeholders})"
-        with self.db.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, list(log_data.values()))
-        print(f"\n[LOG] Pipeline run logged (ID: {self.run_stats['run_id']})")
+        super()._refresh_gold_save_potential(
+            hashes=getattr(self, "_new_expense_hashes", None) or set()
+        )
 
     def _display_summary(self):
-        """Print summary."""
-        duration = (datetime.now() - self.run_stats["start_time"]).total_seconds()
-        print("\n" + "=" * 70)
-        print("INCREMENTAL LOAD COMPLETE")
-        print("=" * 70)
-        print(f"Status: {self.run_stats['status']}")
-        print(f"Duration: {duration:.2f} seconds")
-        print(f"\nData Flow:")
-        print(f"  Extracted:       {self.run_stats['rows_extracted']:,} rows")
-        print(f"  -> Bronze:       {self.run_stats['rows_loaded_bronze']:,} rows")
-        print(f"  -> Silver:       {self.run_stats['rows_loaded_silver']:,} new rows")
-        print(f"  Duplicates:      {self.run_stats['rows_skipped_duplicates']:,} skipped")
-        print("=" * 70)
+        super()._display_summary("INCREMENTAL LOAD COMPLETE")
 
 
 def apply_account_filter(df: pd.DataFrame, account_filter: Optional[str]) -> pd.DataFrame:
