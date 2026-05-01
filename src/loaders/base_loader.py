@@ -1,17 +1,25 @@
 """
 Shared base class for the staging/bronze/silver loaders.
 
-Holds the helpers that are identical (or near-identical) between
-IncrementalDataLoader and InitialDataLoader: pipeline-run logging,
-summary printing, bulk insert, category-mapping refresh, and the gold
-refresh wrappers. The actual extract / silver-load strategy is left
-to subclasses.
+Holds everything that is identical between IncrementalDataLoader and
+InitialDataLoader: extract-from-file, transform, staging/bronze writes,
+pipeline-run logging, summary printing, bulk insert, category-mapping
+refresh, and the gold refresh wrappers.
+
+Both subclasses share the same `load()` orchestration: a single
+PostgreSQL transaction wraps staging + bronze + silver, with rollback
+on any failure. The two subclasses only differ in:
+  - `_extract`: where the raw data comes from
+  - `_load_silver`: truncate-and-reload vs. dedupe-and-append
+  - `_post_transform`: optional account filter (incremental only)
+  - which gold-refresh mode they pass through (`hashes=...` vs `full=True`)
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
@@ -23,13 +31,16 @@ from utils.db_connector import get_db_connector
 class BaseLoader:
     """Common plumbing for the medallion loaders.
 
-    Subclasses are responsible for:
-      - extracting raw data (`_extract`)
-      - the silver-load policy (`_load_silver`) — truncate-and-reload vs. dedupe-and-append
-      - the overall `load()` orchestration (transaction scope, gold refresh policy)
+    Subclasses override:
+      - `_extract()` — produce a raw DataFrame
+      - `_load_silver(df, conn)` — silver-load policy
+      - `_post_transform(df)` — optional row filter after transform (defaults to identity)
+      - `_refresh_gold_*` — supply `hashes=...` or `full=True`
     """
 
-    # Subclasses override this so silver.created_by reflects the load type.
+    # Subclasses override these two for human-readable output and silver lineage.
+    header_text: str = "PERSONAL FINANCE PIPELINE - DATA LOAD"
+    summary_text: str = "LOAD COMPLETE"
     created_by: str = "base_loader"
 
     def __init__(self, source_file_name: str):
@@ -52,6 +63,230 @@ class BaseLoader:
             "rows_skipped_duplicates": 0,
             "status": "RUNNING",
         }
+
+    # ------------------------------------------------------------------ #
+    # Top-level orchestration
+    # ------------------------------------------------------------------ #
+    def load(self) -> bool:
+        """Run extract → transform → staging → bronze → silver → gold.
+
+        Staging, bronze, and silver are written under a single connection
+        and committed together. Any error rolls back all three layers so
+        the medallion stays consistent. The pipeline-run log writes on a
+        fresh connection so it survives a rollback.
+        """
+        self._print_header()
+        try:
+            raw_df = self._extract()
+            if raw_df is None or len(raw_df) == 0:
+                print("\n  No new data to load.")
+                self.run_stats["status"] = "SUCCESS"
+                self._log_pipeline_run()
+                return True
+
+            transformed_df = self._transform(raw_df)
+            if len(transformed_df) == 0:
+                print("\n  No valid records after transformation.")
+                self.run_stats["status"] = "SUCCESS"
+                self._log_pipeline_run()
+                return True
+
+            transformed_df = self._post_transform(transformed_df)
+            if len(transformed_df) == 0:
+                print("\n  No records after post-transform filter.")
+                self.run_stats["status"] = "SUCCESS"
+                self._log_pipeline_run()
+                return True
+
+            conn = self.db.connect()
+            try:
+                self._load_staging(transformed_df, conn)
+                self._load_bronze(transformed_df, conn)
+                self._load_silver(transformed_df, conn)
+                self._update_category_mapping(conn)
+                conn.commit()
+                print("\n  All layers committed in a single transaction.")
+            except Exception:
+                conn.rollback()
+                print("\n  Transaction rolled back - no partial data written.")
+                raise
+            finally:
+                conn.close()
+
+            self._refresh_gold_notability()
+            self._refresh_gold_save_potential()
+
+            self.run_stats["status"] = "SUCCESS"
+            self._log_pipeline_run()
+            self._display_summary()
+            return True
+        except Exception as e:
+            self.run_stats["status"] = "FAILED"
+            self.run_stats["error_message"] = str(e)
+            print(f"\nPipeline failed: {str(e)}")
+            try:
+                self._log_pipeline_run()
+            except Exception:
+                pass
+            raise
+
+    def _print_header(self) -> None:
+        print("\n" + "=" * 70)
+        print(self.header_text)
+        print("=" * 70)
+        print(f"Batch ID: {self.batch_id}")
+        print(
+            f"Started: {self.run_stats['start_time'].strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        print("=" * 70)
+
+    # ------------------------------------------------------------------ #
+    # Extract / transform — overridable
+    # ------------------------------------------------------------------ #
+    def _extract(self) -> pd.DataFrame:
+        """Subclasses override to extract from API or file."""
+        raise NotImplementedError("Subclasses must implement _extract")
+
+    def _extract_from_file(self, file_path: Path) -> pd.DataFrame:
+        """Read xlsx or csv into a DataFrame."""
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+        self.run_stats["file_size_bytes"] = file_path.stat().st_size
+
+        ext = file_path.suffix.lower()
+        if ext in [".xlsx", ".xls"]:
+            df = pd.read_excel(file_path)
+        elif ext == ".csv":
+            df = pd.read_csv(file_path)
+        else:
+            raise ValueError(f"Unsupported file type: {ext}")
+
+        self.run_stats["rows_extracted"] = len(df)
+        print(f"\n[EXTRACT] Read {len(df):,} rows from {file_path.name}")
+        return df
+
+    def _transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply ExpenseTransformer.transform and return the cleaned DataFrame."""
+        print("\n[TRANSFORM] Applying transformations...")
+        result = self.transformer.transform(df)
+        # The transformer historically sometimes returned (df, stats); accept either.
+        if isinstance(result, tuple):
+            transformed_df = result[0]
+        else:
+            transformed_df = result
+        print(f"  Output: {len(transformed_df):,} rows")
+        return transformed_df
+
+    def _post_transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Hook for subclass-specific post-processing (e.g. account filter)."""
+        return df
+
+    # ------------------------------------------------------------------ #
+    # Staging + Bronze (identical between subclasses)
+    # ------------------------------------------------------------------ #
+    def _load_staging(self, df: pd.DataFrame, conn) -> None:
+        """Truncate staging.raw_transactions and load the current batch."""
+        print("\n[LOAD STAGING] Loading to staging.raw_transactions...")
+        payment_col = (
+            "payment_method" if "payment_method" in df.columns else "payment_type"
+        )
+        cols = [
+            "date", "description", "type", "payee", "amount", "labels",
+            "account", "subcategory", "currency", payment_col,
+        ]
+        cols = [c for c in cols if c in df.columns]
+        staging_df = df[cols].copy()
+        staging_df = staging_df.rename(
+            columns={
+                payment_col: "payment",
+                "description": "note",
+                "subcategory": "category",
+            }
+        )
+        staging_df["source_file"] = self.run_stats["source_file"]
+        staging_df["batch_id"] = str(self.batch_id)
+        staging_df["loaded_at"] = datetime.now()
+        staging_df["source_row_number"] = range(1, len(staging_df) + 1)
+
+        cursor = conn.cursor()
+        cursor.execute("TRUNCATE TABLE staging.raw_transactions;")
+        rows = self._bulk_insert(staging_df, "staging", "raw_transactions", conn)
+        self.run_stats["rows_staged"] = rows
+        print(f"  Loaded {rows:,} rows to staging")
+
+    def _load_bronze(self, df: pd.DataFrame, conn) -> None:
+        """Append the batch to bronze.transactions_raw (immutable archive)."""
+        print("\n[LOAD BRONZE] Appending to bronze.transactions_raw...")
+        bronze_df = df.copy()
+        rename_map = {
+            "date": "transaction_date",
+            "note": "description",
+            "account": "account_name",
+        }
+        if "payment_type" in bronze_df.columns and "payment_method" not in bronze_df.columns:
+            rename_map["payment_type"] = "payment_method"
+        bronze_df = bronze_df.rename(columns=rename_map)
+
+        bronze_df["source_file"] = self.run_stats["source_file"]
+        bronze_df["source_row_number"] = range(1, len(bronze_df) + 1)
+        bronze_df["ingestion_timestamp"] = datetime.now()
+        bronze_df["ingestion_batch_id"] = str(self.batch_id)
+        bronze_df["has_quality_issues"] = False
+
+        bronze_columns = [
+            "transaction_date", "description", "transaction_type", "payee",
+            "amount", "labels", "account_name", "subcategory", "currency",
+            "payment_method", "source_file", "source_row_number",
+            "ingestion_timestamp", "ingestion_batch_id", "has_quality_issues",
+        ]
+        bronze_df = bronze_df[[c for c in bronze_columns if c in bronze_df.columns]]
+        rows = self._bulk_insert(bronze_df, "bronze", "transactions_raw", conn)
+        self.run_stats["rows_loaded_bronze"] = rows
+        print(f"  Appended {rows:,} rows to bronze")
+
+    # ------------------------------------------------------------------ #
+    # Silver — overridable
+    # ------------------------------------------------------------------ #
+    def _load_silver(self, df: pd.DataFrame, conn) -> None:
+        """Subclasses override with their silver-loading policy."""
+        raise NotImplementedError("Subclasses must implement _load_silver")
+
+    def _silver_columns(self) -> list[str]:
+        """Whitelist of columns the silver insert is allowed to use."""
+        return [
+            "transaction_hash", "transaction_date", "transaction_type",
+            "amount", "amount_abs", "currency",
+            "amount_eur", "amount_abs_eur", "eur_conversion_rate",
+            "amount_bgn", "amount_abs_bgn",
+            "source_record_id", "category_id",
+            "description", "payee", "subcategory",
+            "account_name", "payment_method", "labels",
+            "year", "month", "quarter", "year_month",
+            "day_of_week", "week_of_year", "is_weekend",
+            "source_raw_id", "created_at", "created_by",
+            "classification",
+        ]
+
+    def _prepare_silver_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply renames + metadata columns to produce a silver-ready DataFrame."""
+        silver_df = df.copy()
+        rename_map = {
+            "date": "transaction_date",
+            "account": "account_name",
+        }
+        if "note" in silver_df.columns:
+            rename_map["note"] = "description"
+        if "payment_type" in silver_df.columns and "payment_method" not in silver_df.columns:
+            rename_map["payment_type"] = "payment_method"
+        silver_df = silver_df.rename(columns=rename_map)
+
+        silver_df["created_at"] = datetime.now()
+        silver_df["created_by"] = self.created_by
+        silver_df["source_raw_id"] = None
+
+        return silver_df[
+            [c for c in self._silver_columns() if c in silver_df.columns]
+        ]
 
     # ------------------------------------------------------------------ #
     # Bulk insert
@@ -207,13 +442,13 @@ class BaseLoader:
     # ------------------------------------------------------------------ #
     def _display_summary(
         self,
-        header_text: str,
+        header_text: Optional[str] = None,
         *,
         extra_lines: Optional[list[str]] = None,
     ) -> None:
         duration = (datetime.now() - self.run_stats["start_time"]).total_seconds()
         print("\n" + "=" * 70)
-        print(header_text)
+        print(header_text or self.summary_text)
         print("=" * 70)
         print(f"Status: {self.run_stats['status']}")
         print(f"Duration: {duration:.2f} seconds")

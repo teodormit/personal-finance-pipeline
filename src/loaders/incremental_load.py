@@ -36,8 +36,10 @@ ACCOUNT_FILTER_PRESETS = {
 
 
 class IncrementalDataLoader(BaseLoader):
-    """Handles incremental loading - appends new transactions without truncating silver."""
+    """Append-only loader. Dedupes against silver.transactions by transaction_hash."""
 
+    header_text = "PERSONAL FINANCE PIPELINE - INCREMENTAL LOAD"
+    summary_text = "INCREMENTAL LOAD COMPLETE"
     created_by = "incremental_load_script"
 
     def __init__(
@@ -49,8 +51,6 @@ class IncrementalDataLoader(BaseLoader):
         to_date: Optional[str] = None,
     ):
         """
-        Initialize loader.
-
         Args:
             source: 'api' for BudgetBakers API, 'file' for local file
             file_path: Path to source file (required when source='file')
@@ -71,79 +71,42 @@ class IncrementalDataLoader(BaseLoader):
         )
         super().__init__(source_file_name=source_file_name)
 
-    def load(self) -> bool:
-        """Execute the incremental load pipeline.
+    # ------------------------------------------------------------------ #
+    # Extract
+    # ------------------------------------------------------------------ #
+    def _extract(self) -> pd.DataFrame:
+        if self.source == "api":
+            return self._extract_from_api()
+        if not self.file_path:
+            raise FileNotFoundError("file_path is required when source='file'")
+        return self._extract_from_file(self.file_path)
 
-        Staging, bronze, and silver are loaded inside a single DB transaction.
-        If any layer fails the entire batch is rolled back so the layers stay
-        consistent.  The metadata log is written on a separate connection so it
-        persists even after a rollback.
-        """
-        print("\n" + "=" * 70)
-        print("PERSONAL FINANCE PIPELINE - INCREMENTAL LOAD")
-        print("=" * 70)
-        print(f"Batch ID: {self.batch_id}")
-        print(f"Source: {self.source}")
-        print(f"Started: {self.run_stats['start_time'].strftime('%Y-%m-%d %H:%M:%S')}")
-        print("=" * 70)
+    def _extract_from_api(self) -> pd.DataFrame:
+        """Pull from BudgetBakers API. Watermark = max(silver.transaction_date) + 1d."""
+        last_date = self._get_last_silver_date()
+        date_to = (
+            datetime.strptime(self.to_date, "%Y-%m-%d")
+            if self.to_date
+            else datetime.now()
+        )
+        date_from = (
+            datetime.strptime(self.from_date, "%Y-%m-%d")
+            if self.from_date
+            else (
+                (last_date + timedelta(days=1))
+                if last_date
+                else (date_to - timedelta(days=365))
+            )
+        )
+        if date_from >= date_to:
+            print("\n[EXTRACT] No new date range - silver is up to date.")
+            return pd.DataFrame()
 
-        try:
-            raw_df = self._extract()
-            if raw_df is None or len(raw_df) == 0:
-                print("\n  No new data to load.")
-                self.run_stats["status"] = "SUCCESS"
-                self._log_pipeline_run()
-                return True
-
-            transformed_df = self._transform(raw_df)
-            if len(transformed_df) == 0:
-                print("\n  No valid records after transformation.")
-                self.run_stats["status"] = "SUCCESS"
-                self._log_pipeline_run()
-                return True
-
-            transformed_df = self._apply_account_filter(transformed_df)
-            if len(transformed_df) == 0:
-                print("\n  No records after account filter.")
-                self.run_stats["status"] = "SUCCESS"
-                self._log_pipeline_run()
-                return True
-
-            # Single transaction for all three layers
-            conn = self.db.connect()
-            try:
-                self._load_staging(transformed_df, conn)
-                self._load_bronze(transformed_df, conn)
-                self._load_silver(transformed_df, conn)
-                conn.commit()
-                print("\n  All layers committed in a single transaction.")
-            except Exception:
-                conn.rollback()
-                print("\n  Transaction rolled back - no partial data written.")
-                raise
-            finally:
-                conn.close()
-
-            self._refresh_gold_notability()
-            self._refresh_gold_save_potential()
-
-            self.run_stats["status"] = "SUCCESS"
-            self._log_pipeline_run()
-            self._display_summary()
-            return True
-
-        except Exception as e:
-            self.run_stats["status"] = "FAILED"
-            self.run_stats["error_message"] = str(e)
-            print(f"\nPipeline failed: {str(e)}")
-            try:
-                self._log_pipeline_run()
-            except Exception:
-                pass
-            raise
+        df = BudgetBakersExtractor().extract(date_from=date_from, date_to=date_to)
+        self.run_stats["rows_extracted"] = len(df)
+        return df
 
     def _get_last_silver_date(self) -> Optional[datetime]:
-        """Get the max transaction_date from silver.transactions."""
         with self.db.connect() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT MAX(transaction_date) FROM silver.transactions")
@@ -155,118 +118,16 @@ class IncrementalDataLoader(BaseLoader):
                 return val
             return datetime.combine(val, datetime.min.time())
 
-    def _extract(self) -> pd.DataFrame:
-        """Extract data from API or file."""
-        if self.source == "api":
-            return self._extract_from_api()
-        return self._extract_from_file()
-
-    def _extract_from_api(self) -> pd.DataFrame:
-        """Extract from BudgetBakers API. Uses from_date/to_date overrides or silver watermark."""
-        last_date = self._get_last_silver_date()
-        date_to = (
-            datetime.strptime(self.to_date, "%Y-%m-%d")
-            if self.to_date
-            else datetime.now()
-        )
-        date_from = (
-            datetime.strptime(self.from_date, "%Y-%m-%d")
-            if self.from_date
-            else ((last_date + timedelta(days=1)) if last_date else (date_to - timedelta(days=365)))
-        )
-        if date_from >= date_to:
-            print("\n[EXTRACT] No new date range - silver is up to date.")
-            return pd.DataFrame()
-
-        extractor = BudgetBakersExtractor()
-        df = extractor.extract(date_from=date_from, date_to=date_to)
-        self.run_stats["rows_extracted"] = len(df)
-        return df
-
-    def _extract_from_file(self) -> pd.DataFrame:
-        """Extract from local file."""
-        if not self.file_path or not self.file_path.exists():
-            raise FileNotFoundError(f"File not found: {self.file_path}")
-
-        self.run_stats["file_size_bytes"] = self.file_path.stat().st_size
-        ext = self.file_path.suffix.lower()
-        if ext in [".xlsx", ".xls"]:
-            df = pd.read_excel(self.file_path)
-        elif ext == ".csv":
-            df = pd.read_csv(self.file_path)
-        else:
-            raise ValueError(f"Unsupported file type: {ext}")
-
-        self.run_stats["rows_extracted"] = len(df)
-        print(f"\n[EXTRACT] Read {len(df):,} rows from {self.file_path.name}")
-        return df
-
-    def _transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Transform using ExpenseTransformer."""
-        print("\n[TRANSFORM] Applying transformations...")
-        result = self.transformer.transform(df)
-        print(f"  Output: {len(result):,} rows")
-        return result
-
-    def _apply_account_filter(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Filter by allowed accounts and optional per-account end dates. Returns filtered DataFrame."""
+    # ------------------------------------------------------------------ #
+    # Post-transform: account filter
+    # ------------------------------------------------------------------ #
+    def _post_transform(self, df: pd.DataFrame) -> pd.DataFrame:
         return apply_account_filter(df, self.account_filter)
 
-    def _load_staging(self, df: pd.DataFrame, conn):
-        """Load to staging (truncate first)."""
-        print("\n[LOAD STAGING] Loading to staging.raw_transactions...")
-        cols = ["date", "description", "type", "payee", "amount", "labels", "account", "subcategory", "currency"]
-        payment_col = "payment_method" if "payment_method" in df.columns else "payment_type"
-        cols.append(payment_col)
-        cols = [c for c in cols if c in df.columns]
-        staging_df = df[cols].copy()
-        staging_df = staging_df.rename(columns={payment_col: "payment", "description": "note", "subcategory": "category"})
-        staging_df["source_file"] = self.run_stats["source_file"]
-        staging_df["batch_id"] = str(self.batch_id)
-        staging_df["loaded_at"] = datetime.now()
-        staging_df["source_row_number"] = range(1, len(staging_df) + 1)
-
-        cursor = conn.cursor()
-        cursor.execute("TRUNCATE TABLE staging.raw_transactions;")
-        rows = self._bulk_insert(staging_df, "staging", "raw_transactions", conn)
-        self.run_stats["rows_staged"] = rows
-        print(f"  Loaded {rows:,} rows to staging")
-
-    def _load_bronze(self, df: pd.DataFrame, conn):
-        """Append to bronze (immutable)."""
-        print("\n[LOAD BRONZE] Appending to bronze.transactions_raw...")
-        bronze_df = df.copy()
-        bronze_df = bronze_df.rename(columns={
-            "date": "transaction_date",
-            "note": "description",
-            "payee": "payee",
-            "amount": "amount",
-            "labels": "labels",
-            "account": "account_name",
-            "subcategory": "subcategory",
-            "currency": "currency",
-        })
-        payment_col = "payment_method" if "payment_method" in bronze_df.columns else "payment_type"
-        bronze_df = bronze_df.rename(columns={payment_col: "payment_method"})
-        bronze_df["source_file"] = self.run_stats["source_file"]
-        bronze_df["source_row_number"] = range(1, len(bronze_df) + 1)
-        bronze_df["ingestion_timestamp"] = datetime.now()
-        bronze_df["ingestion_batch_id"] = str(self.batch_id)
-        bronze_df["has_quality_issues"] = False
-
-        bronze_columns = [
-            "transaction_date", "description", "transaction_type", "payee",
-            "amount", "labels", "account_name", "subcategory", "currency",
-            "payment_method", "source_file", "source_row_number",
-            "ingestion_timestamp", "ingestion_batch_id", "has_quality_issues",
-        ]
-        bronze_df = bronze_df[[c for c in bronze_columns if c in bronze_df.columns]]
-        rows = self._bulk_insert(bronze_df, "bronze", "transactions_raw", conn)
-        self.run_stats["rows_loaded_bronze"] = rows
-        print(f"  Appended {rows:,} rows to bronze")
-
-    def _load_silver(self, df: pd.DataFrame, conn):
-        """Insert only new records (deduplicate by transaction_hash). Does NOT truncate."""
+    # ------------------------------------------------------------------ #
+    # Silver load: dedupe by hash
+    # ------------------------------------------------------------------ #
+    def _load_silver(self, df: pd.DataFrame, conn) -> None:
         print("\n[LOAD SILVER] Inserting new records to silver.transactions...")
 
         cursor = conn.cursor()
@@ -281,80 +142,58 @@ class IncrementalDataLoader(BaseLoader):
             print(f"  All {len(df)} records already exist (duplicates). Skipped.")
             self.run_stats["rows_loaded_silver"] = 0
             self._new_expense_hashes = set()
-            self._update_category_mapping(conn)
             return
 
-        expense_mask = new_df["transaction_type"].astype(str).str.upper() == "EXPENSE"
-        self._new_expense_hashes = set(new_df.loc[expense_mask, "transaction_hash"].astype(str))
+        # Track new EXPENSE hashes for targeted gold refresh after commit.
+        expense_mask = (
+            new_df["transaction_type"].astype(str).str.upper() == "EXPENSE"
+        )
+        self._new_expense_hashes = set(
+            new_df.loc[expense_mask, "transaction_hash"].astype(str)
+        )
 
-        silver_df = new_df.copy()
-        rename_map = {
-            "date": "transaction_date",
-            "account": "account_name",
-        }
-        if "note" in silver_df.columns:
-            rename_map["note"] = "description"
-        if "payment_type" in silver_df.columns and "payment_method" not in silver_df.columns:
-            rename_map["payment_type"] = "payment_method"
-        silver_df = silver_df.rename(columns=rename_map)
-        silver_df["created_at"] = datetime.now()
-        silver_df["created_by"] = "incremental_load_script"
-        silver_df["source_raw_id"] = None
-
-        silver_columns = [
-            "transaction_hash", "transaction_date", "transaction_type",
-            "amount", "amount_abs", "currency",
-            "amount_eur", "amount_abs_eur", "eur_conversion_rate",
-            "amount_bgn", "amount_abs_bgn",
-            "source_record_id", "category_id",
-            "description", "payee", "subcategory",
-            "account_name", "payment_method", "labels",
-            "year", "month", "quarter", "year_month",
-            "day_of_week", "week_of_year", "is_weekend",
-            "source_raw_id", "created_at", "created_by",
-            "classification",
-        ]
-        silver_df = silver_df[[c for c in silver_columns if c in silver_df.columns]]
+        silver_df = self._prepare_silver_df(new_df)
         rows = self._bulk_insert(silver_df, "silver", "transactions", conn)
         self.run_stats["rows_loaded_silver"] = rows
         print(f"  Inserted {rows:,} new rows (skipped {skipped:,} duplicates)")
 
-        self._update_category_mapping(conn)
-
+    # ------------------------------------------------------------------ #
+    # Gold refresh: target only the new expense hashes
+    # ------------------------------------------------------------------ #
     def _refresh_gold_notability(self):
-        """Refresh gold.transaction_notability for newly loaded expense hashes. Non-fatal."""
         super()._refresh_gold_notability(
             hashes=getattr(self, "_new_expense_hashes", None) or set()
         )
 
     def _refresh_gold_save_potential(self):
-        """Refresh gold.transaction_save_potential for newly loaded expense hashes. Non-fatal."""
         super()._refresh_gold_save_potential(
             hashes=getattr(self, "_new_expense_hashes", None) or set()
         )
 
-    def _display_summary(self):
-        super()._display_summary("INCREMENTAL LOAD COMPLETE")
 
-
-def apply_account_filter(df: pd.DataFrame, account_filter: Optional[str]) -> pd.DataFrame:
+def apply_account_filter(
+    df: pd.DataFrame, account_filter: Optional[str]
+) -> pd.DataFrame:
     """Filter DataFrame by account preset. Shared by loader and inspect script."""
     if account_filter in (None, "all"):
         return df
 
     preset = ACCOUNT_FILTER_PRESETS.get(account_filter)
     if preset is None:
-        print(f"\n[ACCOUNT FILTER] Unknown preset '{account_filter}', skipping filter.")
+        print(
+            f"\n[ACCOUNT FILTER] Unknown preset '{account_filter}', skipping filter."
+        )
         return df
 
     allowed = set(preset["allowed_accounts"])
     end_dates = preset.get("account_end_dates", {})
 
     if "account" not in df.columns or "date" not in df.columns:
-        print("\n[ACCOUNT FILTER] Missing 'account' or 'date' column, skipping filter.")
+        print(
+            "\n[ACCOUNT FILTER] Missing 'account' or 'date' column, skipping filter."
+        )
         return df
 
-    # Ensure date is comparable
     dates = pd.to_datetime(df["date"], errors="coerce")
     mask_allowed = df["account"].astype(str).str.strip().isin(allowed)
 
@@ -367,22 +206,38 @@ def apply_account_filter(df: pd.DataFrame, account_filter: Optional[str]) -> pd.
     mask = mask_allowed & mask_date_ok
     filtered = df[mask].copy()
     dropped = len(df) - len(filtered)
-    print(f"\n[ACCOUNT FILTER] Preset '{account_filter}': kept {len(filtered):,} of {len(df):,} rows (dropped {dropped:,})")
+    print(
+        f"\n[ACCOUNT FILTER] Preset '{account_filter}': "
+        f"kept {len(filtered):,} of {len(df):,} rows (dropped {dropped:,})"
+    )
     return filtered
 
 
 def main():
     parser = argparse.ArgumentParser(description="Incremental load of expense data")
-    parser.add_argument("--source", choices=["api", "file"], default="api", help="Extract from API or file")
-    parser.add_argument("--file", help="Path to source file (required when --source=file)")
+    parser.add_argument(
+        "--source",
+        choices=["api", "file"],
+        default="api",
+        help="Extract from API or file",
+    )
+    parser.add_argument(
+        "--file", help="Path to source file (required when --source=file)"
+    )
     parser.add_argument(
         "--account-filter",
         choices=["eur", "bgn_final"],
         default="eur",
         help="Account filter preset (default: eur)",
     )
-    parser.add_argument("--from-date", help="Start date for API extraction (YYYY-MM-DD). Default: day after last silver")
-    parser.add_argument("--to-date", help="End date for API extraction (YYYY-MM-DD). Default: today")
+    parser.add_argument(
+        "--from-date",
+        help="Start date for API extraction (YYYY-MM-DD). Default: day after last silver",
+    )
+    parser.add_argument(
+        "--to-date",
+        help="End date for API extraction (YYYY-MM-DD). Default: today",
+    )
     args = parser.parse_args()
 
     if args.source == "file" and not args.file:
