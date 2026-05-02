@@ -171,8 +171,9 @@ python scripts/run_pipeline.py --mode full --source api --from-date 2024-01-01 -
 After correcting silver data, remapping categories, or changing classification values, rebuild all gold scores from scratch:
 
 ```bash
-python scripts/refresh_gold_notability.py --full
-python scripts/refresh_gold_save_potential.py --full
+python scripts/run_pipeline.py --refresh-gold notability
+python scripts/run_pipeline.py --refresh-gold save-potential
+python scripts/run_pipeline.py --refresh-gold both
 ```
 
 These are **not needed** for normal pipeline runs -- gold refreshes automatically.
@@ -200,9 +201,7 @@ python -m pytest tests/ -v
 
 ```
 scripts/                    CLI entry points
-  run_pipeline.py             unified pipeline runner
-  refresh_gold_notability.py  standalone gold notability rebuild
-  refresh_gold_save_potential.py  standalone gold save potential rebuild
+  run_pipeline.py             unified pipeline runner (also handles gold-only refresh via --refresh-gold)
 src/
   extractors/               BudgetBakers API + file extraction
   transformers/             Pandas transformation logic

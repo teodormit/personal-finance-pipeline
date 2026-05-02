@@ -19,12 +19,10 @@ personal-finance-pipeline/
 │   ├── sql/                           # Recovery and maintenance SQL
 │   │   └── recover_clean_state.sql   # Reset staging, bronze, silver to clean state
 │   ├── run_pipeline.py                # Main entry point (full/incremental, api/file)
-│   ├── inspect_wallet_export.py       # Inspect Wallet export files
 │   ├── inspect_api_output.py          # Inspect API data at each stage
 │   ├── inspect_incremental_load.py    # Dry-run incremental pipeline
-│   ├── compare_datasets.py            # Compare two expense datasets
-│   ├── deep_analysis.py               # Deeper comparison for missing transactions
-│   └── cleanup.ps1                   # Repo cleanup helper
+│   ├── archive/                       # Retired one-off utilities (kept for git history)
+│   └── cleanup.ps1                    # Repo cleanup helper
 │
 ├── src/                               # Source code
 │   ├── __init__.py

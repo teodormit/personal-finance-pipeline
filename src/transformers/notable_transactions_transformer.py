@@ -22,7 +22,8 @@ This 365-day cutoff reduces inflation bias from very old prices.
 
 import numpy as np
 import pandas as pd
-from typing import Optional
+
+from transformers._gold_common import compute_rolling_stats
 
 
 # Output columns aligned with gold.transaction_notability
@@ -97,7 +98,7 @@ def compute_notability(
     ).reset_index(drop=True)
 
     # Compute historical stats per row (two-pointer per subcategory)
-    results = _compute_rolling_stats(
+    results = compute_rolling_stats(
         expense,
         amount_col=amount_col,
         date_col=date_col,
@@ -112,82 +113,29 @@ def compute_notability(
     return out[OUTPUT_COLUMNS]
 
 
-def _compute_rolling_stats(
-    df: pd.DataFrame,
-    *,
-    amount_col: str,
-    date_col: str,
-    subcategory_col: str,
-    hash_col: str,
-    window_days: int,
-) -> pd.DataFrame:
+def _assign_notability_label(*, is_new_subcat, z, is_new_max):
+    """Pick the notability label per row, in priority order.
+
+    Higher-priority conditions win — np.select picks the first True per row.
+    Order matters: an outlier in a brand-new subcategory is labeled "New Category".
     """
-    For each row, compute hist_n_txns, hist_avg, hist_std, hist_max
-    from prior rows in same subcategory within [date - window_days, date).
-    """
-    dates = pd.to_datetime(df[date_col]).values.astype("datetime64[D]")
-    amounts = df[amount_col].values.astype(np.float64)
-    subcats = df[subcategory_col].fillna("").values
-    hashes = df[hash_col].astype(str).values
-
-    n = len(df)
-    hist_n = np.zeros(n, dtype=np.int64)
-    hist_sum = np.zeros(n)
-    hist_sumsq = np.zeros(n)
-    hist_max = np.full(n, np.nan)
-
-    window_days_td = np.timedelta64(window_days, "D")
-
-    for subcat in np.unique(subcats):
-        if subcat == "":
-            continue
-        mask = subcats == subcat
-        idx = np.where(mask)[0]
-        sub_dates = dates[idx]
-        sub_amounts = amounts[idx]
-        sub_hashes = hashes[idx]
-        sub_n = len(idx)
-
-        left = 0
-        for i in range(sub_n):
-            di = sub_dates[i]
-            cutoff = di - window_days_td
-            # Advance left: drop rows outside window
-            while left < i and sub_dates[left] < cutoff:
-                left += 1
-            # Window = [left, i): indices strictly before i, within [cutoff, di)
-            # Also exclude same-day rows with hash >= current (strictly before = date<hash order)
-            cnt = 0
-            s = 0.0
-            sq = 0.0
-            mx = np.nan
-            for j in range(left, i):
-                if sub_dates[j] >= cutoff:
-                    cnt += 1
-                    s += sub_amounts[j]
-                    sq += sub_amounts[j] ** 2
-                    mx = sub_amounts[j] if np.isnan(mx) else max(mx, sub_amounts[j])
-            hist_n[idx[i]] = cnt
-            hist_sum[idx[i]] = s
-            hist_sumsq[idx[i]] = sq
-            hist_max[idx[i]] = mx
-
-    result = df[[hash_col, date_col, subcategory_col, amount_col]].copy()
-    result["hist_window_days"] = window_days
-    result["hist_n_txns"] = hist_n
-    with np.errstate(divide="ignore", invalid="ignore"):
-        result["hist_avg_amount_eur"] = np.where(
-            hist_n > 0, hist_sum / hist_n, np.nan
-        )
-        # Population std (ddof=0) for consistency with historical avg
-        variance = np.where(
-            hist_n >= 2,
-            (hist_sumsq / hist_n) - (hist_sum / hist_n) ** 2,
-            np.nan,
-        )
-    result["hist_std_amount_eur"] = np.where(variance > 0, np.sqrt(variance), np.nan)
-    result["hist_max_amount_eur"] = hist_max
-    return result
+    conditions = [
+        is_new_subcat,
+        np.isnan(z),
+        z >= 3,
+        z >= 2,
+        z >= 1,
+        is_new_max,
+    ]
+    choices = [
+        "New Category",
+        "Insufficient History",
+        "Extreme Outlier",
+        "High Outlier",
+        "Above Average",
+        "New Record",
+    ]
+    return np.select(conditions, choices, default="Normal")
 
 
 def _derive_labels_and_score(
@@ -223,31 +171,10 @@ def _derive_labels_and_score(
         + np.where(df["is_new_subcategory_max"] & ~df["is_new_subcategory"], 2.0, 0)
     )
 
-    # Human-readable label (priority: New Category > Insufficient History > z-based > New Record > Normal)
-    df["notability_label"] = np.where(
-        df["is_new_subcategory"],
-        "New Category",
-        np.where(
-            np.isnan(z),
-            "Insufficient History",
-            np.where(
-                z >= 3,
-                "Extreme Outlier",
-                np.where(
-                    z >= 2,
-                    "High Outlier",
-                    np.where(
-                        z >= 1,
-                        "Above Average",
-                        np.where(
-                            df["is_new_subcategory_max"],
-                            "New Record",
-                            "Normal",
-                        ),
-                    ),
-                ),
-            ),
-        ),
+    df["notability_label"] = _assign_notability_label(
+        is_new_subcat=df["is_new_subcategory"].values,
+        z=z,
+        is_new_max=df["is_new_subcategory_max"].values,
     )
 
     # Reason string for tooltips
@@ -272,8 +199,6 @@ def _derive_labels_and_score(
     ):
         df[date_col_name] = df[date_col_name].dt.date
     return df
-# (This line appeared to be a leftover lint artifact and is not valid Python code.
-# It should be removed for clean, working code. No statement is needed here.)
 
 
 def _compute_extra_features(df: pd.DataFrame) -> pd.DataFrame:

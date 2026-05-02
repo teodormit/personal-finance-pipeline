@@ -14,7 +14,7 @@ Weights (avoidability dominant, then frequency, then amount):
 import numpy as np
 import pandas as pd
 
-from transformers.notable_transactions_transformer import _compute_rolling_stats
+from transformers._gold_common import compute_rolling_stats
 
 # Tunable weights (plan)
 WEIGHT_AVOIDABILITY = 3.0
@@ -29,6 +29,13 @@ AVOIDABILITY = {
     "NEED": 0.4,
     "MUST": 0.05,
 }
+
+def _assign_save_potential_label(score):
+    """Map composite score to a 4-tier label."""
+    conditions = [score >= 5.0, score >= 3.0, score >= 1.0]
+    choices = ["High Save Potential", "Medium Save Potential", "Low Save Potential"]
+    return np.select(conditions, choices, default="Minimal")
+
 
 SAVE_OUTPUT_COLUMNS = [
     "transaction_hash",
@@ -83,7 +90,7 @@ def compute_save_potential(
     ).reset_index(drop=True)
 
     # Z-score from same rolling window as notability
-    stats = _compute_rolling_stats(
+    stats = compute_rolling_stats(
         expense,
         amount_col=amount_col,
         date_col=date_col,
@@ -116,7 +123,12 @@ def compute_save_potential(
     stats["classification"] = expense[classification_col].values
     stats["avoidability"] = expense[classification_col].map(_avoidability).values
 
-    # Monthly frequency: counts per (year_month, subcategory)
+    # Monthly frequency:
+    #   month_txn_count        = count of EXPENSE rows in (year_month, subcategory)
+    #   hist_avg_monthly_count = mean of prior months' counts in same subcategory,
+    #                            limited to the past `window_days`
+    # We compute these via a self-merge on month_counts rather than a per-row
+    # apply with dict lookups: faster and easier to reason about.
     month_counts = (
         expense.groupby([year_month_col, subcategory_col], dropna=False)
         .size()
@@ -126,56 +138,52 @@ def compute_save_potential(
         month_counts[year_month_col].astype(str) + "-01", errors="coerce"
     )
 
-    hist_avg_map = {}
-    for _, mr in month_counts.iterrows():
-        ym = mr[year_month_col]
-        sub = mr[subcategory_col]
-        cur_start = mr["_month_start"]
-        if pd.isna(cur_start):
-            hist_avg_map[(ym, sub)] = np.nan
-            continue
-        win_start = cur_start - pd.Timedelta(days=window_days)
-        prior = month_counts[
-            (month_counts[subcategory_col] == sub)
-            & (month_counts["_month_start"] < cur_start)
-            & (month_counts["_month_start"] >= win_start)
-        ]
-        hist_avg_map[(ym, sub)] = (
-            prior["month_txn_count"].mean() if len(prior) else np.nan
+    # Self-merge on subcategory: each "current month" row joins to every
+    # other month in the same subcategory; we then keep only those falling
+    # within (current - window_days, current).
+    pairs = month_counts.merge(month_counts, on=subcategory_col, suffixes=("", "_prior"))
+    in_window = (
+        (pairs["_month_start_prior"] < pairs["_month_start"])
+        & (
+            pairs["_month_start_prior"]
+            >= pairs["_month_start"] - pd.Timedelta(days=window_days)
         )
-
-    mcount_map = month_counts.set_index([year_month_col, subcategory_col])[
-        "month_txn_count"
-    ].to_dict()
-
-    def _row_freq(row):
-        ym = row[year_month_col]
-        sub = row[subcategory_col]
-        key = (ym, sub)
-        mcount = int(mcount_map.get(key, 0))
-        havg = hist_avg_map.get(key, np.nan)
-        if pd.notna(havg) and havg > 0:
-            fr = mcount / havg
-            fe = min(max(fr - 1.0, 0.0), FREQ_EXCESS_CAP)
-            return mcount, havg, fr, fe
-        return mcount, havg, np.nan, 0.0
-
-    freq_df = expense.apply(
-        lambda r: pd.Series(
-            _row_freq(r),
-            index=[
-                "month_txn_count",
-                "hist_avg_monthly_count",
-                "freq_ratio",
-                "freq_excess",
-            ],
-        ),
-        axis=1,
     )
-    stats["month_txn_count"] = freq_df["month_txn_count"].values
-    stats["hist_avg_monthly_count"] = freq_df["hist_avg_monthly_count"].values
-    stats["freq_ratio"] = freq_df["freq_ratio"].values
-    stats["freq_excess"] = freq_df["freq_excess"].values.astype(float)
+    pairs = pairs[in_window]
+    hist_avg = (
+        pairs.groupby([year_month_col, subcategory_col])["month_txn_count_prior"]
+        .mean()
+        .reset_index(name="hist_avg_monthly_count")
+    )
+    month_counts = month_counts.merge(
+        hist_avg, on=[year_month_col, subcategory_col], how="left"
+    )
+
+    # Bring per-month counts and historical averages onto each expense row.
+    expense_freq = expense.merge(
+        month_counts[
+            [year_month_col, subcategory_col, "month_txn_count", "hist_avg_monthly_count"]
+        ],
+        on=[year_month_col, subcategory_col],
+        how="left",
+    )
+    mcount = expense_freq["month_txn_count"].astype(int).values
+    havg = expense_freq["hist_avg_monthly_count"].values
+
+    # freq_ratio is defined only when there is a positive prior-month average.
+    valid_havg = (havg > 0) & ~np.isnan(havg)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        freq_ratio = np.where(valid_havg, mcount / havg, np.nan)
+    freq_excess = np.where(
+        np.isnan(freq_ratio),
+        0.0,
+        np.clip(freq_ratio - 1.0, 0.0, FREQ_EXCESS_CAP),
+    )
+
+    stats["month_txn_count"] = mcount
+    stats["hist_avg_monthly_count"] = havg
+    stats["freq_ratio"] = freq_ratio
+    stats["freq_excess"] = freq_excess.astype(float)
 
     fe_arr = stats["freq_excess"].values.astype(float)
     av = stats["avoidability"].values.astype(float)
@@ -183,15 +191,7 @@ def compute_save_potential(
     score = av * WEIGHT_AVOIDABILITY + fe_arr * WEIGHT_FREQ + ae * WEIGHT_AMT
     stats["save_potential_score"] = score
 
-    stats["save_potential_label"] = np.where(
-        score >= 5.0,
-        "High Save Potential",
-        np.where(
-            score >= 3.0,
-            "Medium Save Potential",
-            np.where(score >= 1.0, "Low Save Potential", "Minimal"),
-        ),
-    )
+    stats["save_potential_label"] = _assign_save_potential_label(score)
 
     def _reason(r):
         parts = []
