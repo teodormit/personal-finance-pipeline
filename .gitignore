@@ -87,6 +87,13 @@ temp/
 *.bak
 
 # =====================================================
+# SQL - keep private (owner-specific seeds + grants).
+# Public sanitized blueprint is the only exception.
+# =====================================================
+*.sql
+!docs/postgres_init_blueprint.sql
+
+# =====================================================
 # IDE / OS
 # =====================================================
 .vscode/
