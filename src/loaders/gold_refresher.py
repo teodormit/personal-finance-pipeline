@@ -127,6 +127,10 @@ class GoldRefresher:
     def _fetch_target_info(conn, hashes: Set[str]):
         """Return (subcategories, min_date, max_date) for the given hashes in silver,
         or None if nothing matches.
+
+        Returning None (rather than empty sets) is the signal to refresh()
+        that there is nothing to do. We treat "no rows" and "rows but no
+        dates" the same: skip the refresh entirely.
         """
         cursor = conn.cursor()
         placeholders = ", ".join(["%s"] * len(hashes))

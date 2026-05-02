@@ -78,6 +78,9 @@ class BaseLoader:
         self._print_header()
         try:
             raw_df = self._extract()
+            # Empty extract is a successful run, not a failure: the watermark
+            # advanced and there was simply nothing new to ingest. We still log
+            # the run so metadata.pipeline_runs reflects that we tried.
             if raw_df is None or len(raw_df) == 0:
                 print("\n  No new data to load.")
                 self.run_stats["status"] = "SUCCESS"
@@ -113,6 +116,9 @@ class BaseLoader:
             finally:
                 conn.close()
 
+            # Gold refresh runs *after* commit. It is intentionally non-fatal:
+            # a gold failure must not roll back silver — silver is the truth,
+            # gold is derived and can always be rebuilt with --refresh-gold.
             self._refresh_gold_notability()
             self._refresh_gold_save_potential()
 
