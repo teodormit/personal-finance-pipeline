@@ -1,7 +1,50 @@
-# Environment variables (contains passwords!)
+# =====================================================
+# Secrets & credentials (NEVER commit)
+# =====================================================
 .env
+*.env
+secrets/
+credentials/
+*.pem
+*.key
+client_secret_*.json
+*-service-account*.json
 
+# =====================================================
+# Personal financial data (NEVER commit)
+# =====================================================
+data/raw/*
+data/processed/*
+data/archive/*
+data/inspection/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/archive/.gitkeep
+!data/inspection/.gitkeep
+
+# Spreadsheet exports anywhere in the tree
+*.xlsx
+*.xls
+*.csv
+
+# Standalone analysis scripts working on personal data
+data_check_scripts/
+
+# =====================================================
+# PostgreSQL data dirs (must never be in repo)
+# =====================================================
+data.backup/
+data/base/
+data/global/
+data/pg_*/
+data/postmaster.*
+*.conf.backup
+postgres_data/
+minio_data/
+
+# =====================================================
 # Python
+# =====================================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -9,6 +52,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 build/
 develop-eggs/
@@ -25,58 +69,37 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
 
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
 
-# Data files (contains personal financial data!)
-data/raw/*
-data/processed/*
-data/archive/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-!data/archive/.gitkeep
-
-# PostgreSQL data files (should NEVER be in repo)
-data/base/
-data/global/
-data/pg_*/
-data/postmaster.*
-data_backup/
-*.conf.backup
-
-# Logs
+# =====================================================
+# Logs & temp
+# =====================================================
 logs/
 *.log
+tmp/
+temp/
+*.tmp
+*.backup
+*.bak
 
-# Docker volumes
-postgres_data/
-minio_data/
+# =====================================================
+# SQL - keep private (owner-specific seeds + grants).
+# Public sanitized blueprint is the only exception.
+# =====================================================
+*.sql
+!docs/postgres_init_blueprint.sql
 
-# IDE
+# =====================================================
+# IDE / OS
+# =====================================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
 Thumbs.db
-
-# Credentials
-credentials/
-*.json
-*.pem
-*.key
-
-# Backup files
-*.sql
-*.backup
-*.bak
-
-# Temporary files
-tmp/
-temp/
-*.tmp
