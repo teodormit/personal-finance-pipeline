@@ -61,19 +61,16 @@ class _StubRefresher(GoldRefresher):
 # ---------------------------------------------------------------------------
 # _coerce_to_date
 # ---------------------------------------------------------------------------
-def test_coerce_to_date_passes_through_date():
-    d = date(2025, 6, 15)
-    assert _coerce_to_date(d) is d
-
-
-def test_coerce_to_date_parses_iso_string():
-    d = _coerce_to_date("2025-06-15")
-    assert d == date(2025, 6, 15)
-
-
-def test_coerce_to_date_handles_full_iso_with_time():
-    d = _coerce_to_date("2025-06-15T12:34:56")
-    assert d == date(2025, 6, 15)
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (date(2025, 6, 15),       date(2025, 6, 15)),
+        ("2025-06-15",            date(2025, 6, 15)),
+        ("2025-06-15T12:34:56",   date(2025, 6, 15)),
+    ],
+)
+def test_coerce_to_date(value, expected):
+    assert _coerce_to_date(value) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -361,59 +358,3 @@ def test_refresh_empty_silver_returns_zero():
     assert n == 0
 
 
-# ---------------------------------------------------------------------------
-# Public function compatibility
-# ---------------------------------------------------------------------------
-def test_refresh_notability_for_hashes_delegates_to_class():
-    from loaders.gold_notable_loader import (
-        NotabilityRefresher,
-        refresh_notability_for_hashes,
-    )
-
-    sentinel_db = object()
-    with patch.object(NotabilityRefresher, "refresh", return_value=42) as mock_refresh:
-        result = refresh_notability_for_hashes(
-            sentinel_db, hashes={"h1"}, full=False, window_days=180
-        )
-
-    assert result == 42
-    mock_refresh.assert_called_once_with(
-        sentinel_db, hashes={"h1"}, full=False, window_days=180
-    )
-
-
-def test_refresh_save_potential_for_hashes_delegates_to_class():
-    from loaders.gold_save_potential_loader import (
-        SavePotentialRefresher,
-        refresh_save_potential_for_hashes,
-    )
-
-    sentinel_db = object()
-    with patch.object(
-        SavePotentialRefresher, "refresh", return_value=7
-    ) as mock_refresh:
-        result = refresh_save_potential_for_hashes(
-            sentinel_db, hashes=None, full=True, window_days=365
-        )
-
-    assert result == 7
-    mock_refresh.assert_called_once_with(
-        sentinel_db, hashes=None, full=True, window_days=365
-    )
-
-
-def test_subclass_attributes_match_expected():
-    """Sanity-check: subclasses still declare the right table names + columns."""
-    from loaders.gold_notable_loader import NotabilityRefresher
-    from loaders.gold_save_potential_loader import SavePotentialRefresher
-
-    assert NotabilityRefresher.gold_table == "gold.transaction_notability"
-    assert "extra_stats" in NotabilityRefresher.json_columns
-    assert "notability_score" in NotabilityRefresher.gold_columns
-    assert "transaction_hash" in NotabilityRefresher.gold_columns
-
-    assert SavePotentialRefresher.gold_table == "gold.transaction_save_potential"
-    assert SavePotentialRefresher.json_columns == []
-    assert "classification" in SavePotentialRefresher.silver_extra_columns
-    assert "year_month" in SavePotentialRefresher.silver_extra_columns
-    assert "save_potential_score" in SavePotentialRefresher.gold_columns

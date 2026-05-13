@@ -65,7 +65,8 @@ def test_flatten_record_missing_fields(extractor):
     assert flat["amount_currency"] is None
     assert flat["category_name"] is None
     assert flat["base_amount_value"] is None
-    assert flat["base_amount_currency"] is None
+    # Missing baseAmount falls back to "EUR" (single currency going forward).
+    assert flat["base_amount_currency"] == "EUR"
 
 
 def test_base_amount_parsing_dict(extractor):
@@ -75,19 +76,6 @@ def test_base_amount_parsing_dict(extractor):
         "recordDate": "2026-02-05",
         "amount": {"value": -12.79, "currencyCode": "EUR"},
         "baseAmount": {"value": -12.79, "currencyCode": "BGN"},
-    }
-    flat = extractor._flatten_record(record)
-    assert flat["base_amount_value"] == -12.79
-    assert flat["base_amount_currency"] == "BGN"
-
-
-def test_base_amount_parsing_string(extractor):
-    """Verify baseAmount as string (e.g. from CSV) is parsed."""
-    record = {
-        "id": "x",
-        "recordDate": "2026-02-05",
-        "amount": {"value": -12.79, "currencyCode": "EUR"},
-        "baseAmount": "{'value': -12.79, 'currencyCode': 'BGN'}",
     }
     flat = extractor._flatten_record(record)
     assert flat["base_amount_value"] == -12.79

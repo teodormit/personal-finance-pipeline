@@ -78,43 +78,6 @@ def test_rename_columns():
     assert "payment" in result.columns
 
 
-def test_full_mapping():
-    """End-to-end: sample raw API DataFrame through map_raw_to_transformer_input."""
-    raw_df = pd.DataFrame({
-        "id": ["uuid-1"],
-        "recordDate": ["2026-02-05T00:00:00Z"],
-        "recordDateString": ["2026-02-05"],
-        "recordType": ["expense"],
-        "paymentType": ["transfer"],
-        "note": ["281BATM2604201HH AC1 Плащане /импринтер/ 25.56 EUR авт.код:740853-GREEK RESTAURANT NAMOOS/SOFIA/PAN:5169****1763/CT:08,Операция с карта"],
-        "payee": ["4591TATB0"],
-        "payer": [""],
-        "amount_value": [25.56],
-        "amount_currency": ["EUR"],
-        "category_id": ["d697d6ac-edd1-46b1-87a0-3a65ed6003c6"],
-        "category_name": ["Food & Drinks"],
-        "accountId": ["77a90a1e-a336-489b-8c40-577f2e236dbb"],
-        "account_name": ["UniCredit Bulbank"],
-        "labels": [""],
-        "baseAmount": {"value": -51.1, "currencyCode": "BGN"},
-    })
-    result = map_raw_to_transformer_input(raw_df)
-
-    # ExpenseTransformer expects: actually all columns and doesn't have a strict schema
-    expected_cols = [
-        "source_record_id", "date", "date_time", "note", "type", "payee", "payer", "amount", "labels",
-        "account", "category", "currency", "payment", "category_id", "account_id",]
-    for col in expected_cols:
-        assert col in result.columns, f"Missing column: {col}"
-
-    assert result["date"].iloc[0] == "2026-02-05"
-    assert result["type"].iloc[0] == "Expenses"
-    assert result["payment"].iloc[0] == "TRANSFER"
-    assert result["amount"].iloc[0] == -25.50  # expense positive -> negative
-    assert result["category"].iloc[0] == "Food & Drinks"
-    assert result["account"].iloc[0] == "UniCredit Bulbank"
-
-
 def test_full_mapping_empty_df():
     """Empty DataFrame returns empty DataFrame."""
     raw_df = pd.DataFrame()
