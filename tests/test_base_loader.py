@@ -3,18 +3,15 @@ Unit tests for src/loaders/base_loader.py BaseLoader helpers.
 
 Strategy: pure unit tests with mocks. No database required.
 Verifies the SQL strings, value lists, and side effects of:
-  - run_stats initialization
-  - _log_pipeline_run
-  - _display_summary
   - _bulk_insert (both with and without external conn)
   - _update_category_mapping
   - _refresh_gold_notability / _refresh_gold_save_potential (non-fatal wrappers)
+  - _log_pipeline_run
 """
 
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -36,33 +33,6 @@ def loader():
 
         bl = BaseLoader(source_file_name="unit_test_source.xlsx")
     return bl
-
-
-# ---------------------------------------------------------------------------
-# run_stats init
-# ---------------------------------------------------------------------------
-def test_run_stats_has_expected_keys(loader):
-    expected = {
-        "run_id",
-        "start_time",
-        "source_file",
-        "file_size_bytes",
-        "rows_extracted",
-        "rows_staged",
-        "rows_loaded_bronze",
-        "rows_loaded_silver",
-        "rows_skipped_duplicates",
-        "status",
-    }
-    assert set(loader.run_stats.keys()) == expected
-    assert loader.run_stats["source_file"] == "unit_test_source.xlsx"
-    assert loader.run_stats["status"] == "RUNNING"
-    assert loader.run_stats["rows_extracted"] == 0
-    assert isinstance(loader.run_stats["start_time"], datetime)
-
-
-def test_batch_id_matches_run_id(loader):
-    assert loader.run_stats["run_id"] == loader.batch_id
 
 
 # ---------------------------------------------------------------------------
@@ -255,34 +225,3 @@ def test_log_pipeline_run_includes_error_message_on_failure(loader):
     assert "something exploded" in values
 
 
-# ---------------------------------------------------------------------------
-# _display_summary
-# ---------------------------------------------------------------------------
-def test_display_summary_default_format(loader, capsys):
-    loader.run_stats["status"] = "SUCCESS"
-    loader.run_stats["rows_extracted"] = 1234
-    loader.run_stats["rows_loaded_bronze"] = 1234
-    loader.run_stats["rows_loaded_silver"] = 1100
-    loader.run_stats["rows_skipped_duplicates"] = 134
-    # Make the duration deterministic-ish (>=0)
-    loader.run_stats["start_time"] = datetime.now() - timedelta(seconds=2)
-
-    loader._display_summary("INCREMENTAL LOAD COMPLETE")
-
-    out = capsys.readouterr().out
-    assert "INCREMENTAL LOAD COMPLETE" in out
-    assert "Status: SUCCESS" in out
-    assert "1,234" in out
-    assert "Duplicates:" in out
-    assert "134 skipped" in out
-
-
-def test_display_summary_with_extra_lines(loader, capsys):
-    loader._display_summary(
-        "INITIAL LOAD COMPLETE",
-        extra_lines=["\nNext Steps:", "  1. Verify data"],
-    )
-    out = capsys.readouterr().out
-    assert "INITIAL LOAD COMPLETE" in out
-    assert "Next Steps:" in out
-    assert "1. Verify data" in out

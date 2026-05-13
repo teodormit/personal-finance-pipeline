@@ -29,6 +29,15 @@ data/inspection/*
 
 # Standalone analysis scripts working on personal data
 data_check_scripts/
+# Cursor state files
+.cursor/
+
+# =====================================================
+# Database backups (contain real financial data)
+# =====================================================
+backups/*.dump
+backups/*.dump.gpg
+!backups/.gitkeep
 
 # =====================================================
 # PostgreSQL data dirs (must never be in repo)
