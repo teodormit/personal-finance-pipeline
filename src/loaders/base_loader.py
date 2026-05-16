@@ -339,6 +339,8 @@ class BaseLoader:
         """
         print("  Updating category hierarchy...")
         cursor = conn.cursor()
+
+        # Step 1: join with category_mapping to fill category and classification
         cursor.execute(
             """
             UPDATE silver.transactions t
@@ -348,20 +350,50 @@ class BaseLoader:
               AND (t.category IS NULL OR t.classification IS NULL);
             """
         )
-        updated = cursor.rowcount
+        mapping_updated = cursor.rowcount
+
+        # Step 2: INCOME rows whose category did not resolve to 'Income' are
+        # expense offsets / reimbursements. Original subcategory and category
+        # are preserved for traceability; only income_type is stamped.
         cursor.execute(
             """
             UPDATE silver.transactions
-            SET category = 'Income', classification = 'WANT'
+            SET income_type    = 'REFUND',
+                classification = NULL
             WHERE transaction_type = 'INCOME'
-              AND subcategory IN ('Child Support', 'Lottery, gambling')
-              AND (category IS NULL OR category != 'Income');
+              AND category != 'Income'
+              AND income_type IS NULL;
             """
         )
-        income_override = cursor.rowcount
-        if updated > 0 or income_override > 0:
+        refund_stamped = cursor.rowcount
+
+        # Step 3: remaining INCOME rows (category = 'Income') are real income
+        cursor.execute(
+            """
+            UPDATE silver.transactions
+            SET income_type    = 'REAL',
+                classification = NULL
+            WHERE transaction_type = 'INCOME'
+              AND income_type IS NULL;
+            """
+        )
+        real_stamped = cursor.rowcount
+
+        # Step 4: belt-and-suspenders — clear any residual classification on INCOME rows
+        cursor.execute(
+            """
+            UPDATE silver.transactions
+            SET classification = NULL
+            WHERE transaction_type = 'INCOME'
+              AND classification IS NOT NULL;
+            """
+        )
+
+        total = mapping_updated + refund_stamped + real_stamped
+        if total > 0:
             print(
-                f"  Updated {updated + income_override:,} transactions with category groups"
+                f"  Updated {mapping_updated:,} transactions with category groups "
+                f"({real_stamped:,} REAL income, {refund_stamped:,} REFUND)"
             )
 
     # ------------------------------------------------------------------ #

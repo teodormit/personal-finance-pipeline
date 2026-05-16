@@ -78,7 +78,7 @@ def test_bulk_insert_without_conn_opens_own_connection(loader):
 # ---------------------------------------------------------------------------
 # _update_category_mapping
 # ---------------------------------------------------------------------------
-def test_update_category_mapping_runs_two_updates(loader):
+def test_update_category_mapping_runs_four_updates(loader):
     conn = MagicMock()
     cursor = MagicMock()
     cursor.rowcount = 5
@@ -86,12 +86,13 @@ def test_update_category_mapping_runs_two_updates(loader):
 
     loader._update_category_mapping(conn)
 
-    assert cursor.execute.call_count == 2
-    sql_first = cursor.execute.call_args_list[0].args[0]
-    sql_second = cursor.execute.call_args_list[1].args[0]
-    assert "FROM silver.category_mapping cm" in sql_first
-    assert "transaction_type = 'INCOME'" in sql_second
-    assert "Child Support" in sql_second
+    # Step 1: category_mapping join; Steps 2-4: income_type classification
+    assert cursor.execute.call_count == 4
+    calls = [c.args[0] for c in cursor.execute.call_args_list]
+    assert "FROM silver.category_mapping cm" in calls[0]
+    assert "income_type" in calls[1] and "'REFUND'" in calls[1]
+    assert "income_type" in calls[2] and "'REAL'" in calls[2]
+    assert "classification = NULL" in calls[3]
 
 
 def test_update_category_mapping_does_not_commit(loader):
