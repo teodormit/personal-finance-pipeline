@@ -90,9 +90,9 @@ Examples:
     )
     parser.add_argument(
         "--account-filter",
-        choices=["eur", "bgn_final"],
+        choices=["eur", "bgn_final", "gf", "combined"],
         default="eur",
-        help="Account filter preset for incremental mode (default: eur)",
+        help="Account filter preset for incremental mode (default: eur). 'gf'=Pepi's accounts, 'combined'=both.",
     )
     parser.add_argument(
         "--refresh-gold",

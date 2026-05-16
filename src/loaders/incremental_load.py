@@ -22,7 +22,11 @@ from loaders.base_loader import BaseLoader
 # Account filter presets: allowed accounts + optional per-account end dates (YYYY-MM-DD inclusive)
 ACCOUNT_FILTER_PRESETS = {
     "eur": {
-        "allowed_accounts": ["UniCredit Bulbank - 1522449108EUR", "Cash in Euro"],
+        "allowed_accounts": [
+            "UniCredit Bulbank - 1522449108EUR",
+            "Cash in Euro",
+            "Google Pay",
+        ],
         "account_end_dates": {},
     },
     "bgn_final": {
@@ -31,6 +35,23 @@ ACCOUNT_FILTER_PRESETS = {
             "UniCredit Bulbank - 1522449108BGN": "2025-12-22",
             "Cash": "2025-12-31",
         },
+    },
+    "gf": {
+        "allowed_accounts": [
+            "Pepi - UniCredit Bulbank - 1524149621EUR",
+            "Pepi - Cash",
+        ],
+        "account_end_dates": {},
+    },
+    "combined": {
+        "allowed_accounts": [
+            "UniCredit Bulbank - 1522449108EUR",
+            "Cash in Euro",
+            "Google Pay",
+            "Pepi - UniCredit Bulbank - 1524149621EUR",
+            "Pepi - Cash",
+        ],
+        "account_end_dates": {},
     },
 }
 
@@ -210,6 +231,15 @@ def apply_account_filter(
     mask = mask_allowed & mask_date_ok
     filtered = df[mask].copy()
     dropped = len(df) - len(filtered)
+
+    unrecognized = df.loc[
+        ~df["account"].astype(str).str.strip().isin(allowed), "account"
+    ].astype(str).str.strip().value_counts()
+    if not unrecognized.empty:
+        print(f"\n[ACCOUNT FILTER] WARNING: rows from accounts not in preset '{account_filter}':")
+        for acc_name, count in unrecognized.items():
+            print(f"    - '{acc_name}': {count:,} rows")
+
     print(
         f"\n[ACCOUNT FILTER] Preset '{account_filter}': "
         f"kept {len(filtered):,} of {len(df):,} rows (dropped {dropped:,})"
@@ -230,9 +260,9 @@ def main():
     )
     parser.add_argument(
         "--account-filter",
-        choices=["eur", "bgn_final"],
+        choices=["eur", "bgn_final", "gf", "combined"],
         default="eur",
-        help="Account filter preset (default: eur)",
+        help="Account filter preset (default: eur). 'gf'=Pepi's accounts, 'combined'=both.",
     )
     parser.add_argument(
         "--from-date",
