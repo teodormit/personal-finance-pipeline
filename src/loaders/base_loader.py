@@ -103,6 +103,9 @@ class BaseLoader:
 
             conn = self.db.connect()
             try:
+                # The audit log tracks manual corrections, not routine loads.
+                # Flag this run so the pipeline's own writes aren't logged.
+                conn.cursor().execute("SET LOCAL audit.suppress = 'on'")
                 self._load_staging(transformed_df, conn)
                 self._load_bronze(transformed_df, conn)
                 self._load_silver(transformed_df, conn)

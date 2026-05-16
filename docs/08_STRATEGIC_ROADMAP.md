@@ -27,7 +27,7 @@ You have a real, working medallion warehouse. That alone puts this ahead of 80% 
 What this signals about you: you're not just learning DE patterns, you're applying the right ones. The gaps below are not "you did this wrong" — they're "here's the next layer of seniority."
 
 ### 1.1 To do after 14.05.2026
-  1. Audit trail (metadata.transaction_audit) — wire change logging into the loaders so you have a record of every insert/update to silver. Phase A Step 4.                                                                                                                
+  1. Audit trail (metadata.transaction_audit) — trigger-based change log on silver.transactions capturing every out-of-band UPDATE/DELETE. No SCD2 (see §2.1). Phase A Step 1.                                                                                                                
   2. ExpenseTransformer tests — the biggest remaining coverage gap. The core 9-step cleaning logic has zero unit tests.
   3. Alembic baseline — schema version control so future DB changes are tracked and repeatable. Phase A Step 5.
 
@@ -37,12 +37,15 @@ What this signals about you: you're not just learning DE patterns, you're applyi
 
 These are not nice-to-haves. These are the items that, left unaddressed, will become expensive to fix later.
 
-### 2.1 Designed-but-not-built immutability
-The architecture doc commits to Type 2 SCD with `version`, `is_current`, `valid_from`, `valid_to`, plus a `metadata.transaction_audit` table. **None of that is in the actual silver schema.** Today, if you correct a wrong category in silver, the original value is gone — there is no audit trail, no point-in-time query capability, no "what did I think this was when I did my taxes?" ability.
+### 2.1 Designed-but-not-built immutability *(resolved 2026-05-17 — audit log, no SCD2)*
+The architecture doc committed to Type 2 SCD (`version`, `is_current`, `valid_from`, `valid_to`) plus a `metadata.transaction_audit` table. Today, if you correct a wrong category in silver, the original value is gone — no audit trail, no record of what you changed.
 
-For a 30-year warehouse holding real financial decisions, this is the single biggest gap. You'll do reconciliations, corrections, and reclassifications constantly over decades. Without temporal tables you lose history every time.
+**Decision:** close this gap with the audit log alone — `metadata.transaction_audit`, written by an `AFTER UPDATE/DELETE` trigger on `silver.transactions` — and **drop SCD Type 2**. Rationale:
+- The dataset is small and corrections are infrequent. SCD2 would force a mandatory `WHERE is_current = TRUE` on every silver query and break the `transaction_hash` unique constraint (multiple live versions per hash) — a permanent complexity tax for a point-in-time query that would rarely be run.
+- The audit log answers every realistic question ("what did I change, when, from what to what") without that tax. History is reconstructable by replaying the log.
+- If true point-in-time querying is ever needed, dbt (Phase C) has native `snapshot` SCD2 support — better to adopt it there than hand-roll it now and rip it out later.
 
-**Cost to add later:** painful (existing rows have no version metadata). **Cost to add now:** moderate. **Recommendation:** add before any other major feature.
+The trigger captures all out-of-band corrections, including manual SQL edits; pipeline ingestion is excluded via a session flag. INSERTs are not audited — `bronze.transactions_raw` plus `created_at`/`created_by` already lineage ingestion. See `docs/05_DECISIONS_LOG.md` (2026-05-17).
 
 ### 2.2 No income gold layer despite income in silver
 `silver.transactions` already holds income rows. But there are zero gold models for them. Net worth, savings rate, income volatility, YoY income growth, withholding analysis — all blocked. This is the gap `CLAUDE.md` already flags but it's not yet on any roadmap.
@@ -168,12 +171,11 @@ The principle: every phase delivers a working improvement and unblocks the next 
 
 ### Phase A: Foundation hardening
 **Goal:** make the warehouse safe to grow.
-1. Add Type 2 SCD columns to silver (§2.1). Backfill `version=1`, `is_current=TRUE`, `valid_from=created_at` for existing rows.
-2. Build `metadata.transaction_audit` writes into the loader.
-3. Add Alembic, register the current schema as baseline (§3.6).
-4. Add CI with pytest + sqlfluff on push (§3.5).
-5. Set up a backup script: nightly `pg_dump` to encrypted file, offsite copy weekly (§2.9).
-6. Move pipeline into Docker (§3.3).
+1. Add the `metadata.transaction_audit` change log: an `AFTER UPDATE/DELETE` trigger on `silver.transactions` records before/after values for every out-of-band correction (§2.1). No SCD Type 2 columns — see the §2.1 decision and `docs/05_DECISIONS_LOG.md`.
+2. Add Alembic, register the current schema as baseline (§3.6).
+3. Add CI with pytest + sqlfluff on push (§3.5).
+4. Set up a backup script: nightly `pg_dump` to encrypted file, offsite copy weekly (§2.9).
+5. Move pipeline into Docker (§3.3).
 
 **Why first:** none of these change behavior, all of them protect from data loss and silent breakage as scope expands.
 
