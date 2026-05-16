@@ -46,7 +46,7 @@ Extract → Transform (Pandas) → staging → bronze → silver → gold → Ta
 - `bronze` — immutable raw archive, append-only
 - `silver` — cleaned, deduped analytical base; `silver.transactions` is the primary analytics table
 - `gold` — transaction-level intelligence: `gold.transaction_notability`, `gold.transaction_save_potential`
-- `metadata` — pipeline run logs (`metadata.pipeline_runs`)
+- `metadata` — pipeline run logs (`metadata.pipeline_runs`) and the silver change log (`metadata.transaction_audit`)
 
 **Deduplication:** every transaction gets a SHA-256 `transaction_hash` (date + amount + category + description). Silver inserts only unknown hashes. Gold loaders upsert on `transaction_hash`.
 
