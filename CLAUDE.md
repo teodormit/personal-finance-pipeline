@@ -8,9 +8,9 @@ This is a **long-term financial data warehouse** designed to run for ~30 years, 
 
 **Scope trajectory:** expenses and income are the foundation; investments and broader financial datasets will follow. `silver.transactions` already holds income rows, but the gold layer currently only models expenses. Avoid designing anything that assumes expenses are the only transaction type — income gold models are an explicit future gap. Keep new schema, transformer, or loader designs extensible to other `transaction_type` values.
 
-**Owner background:** strong BI and data visualization expertise (Tableau, analytical modeling), 4 months into data engineering. Frame technical explanations as extensions of BI concepts where helpful.
-
 **Infrastructure constraint:** open-source and self-hosted throughout. No managed cloud services as primary components.
+
+See global CLAUDE.md for owner background and working preferences.
 
 ## Commands
 
@@ -121,6 +121,6 @@ Use `%s` placeholders for query parameters — never interpolate variables into 
 
 ## Diagnostic Scripts
 
-`scripts/inspect_incremental_load.py` — dry-run inspection without writing.
+`scripts/inspect_incremental_load.py` — dry-run inspection without writing. **Use this before any incremental pipeline run to verify what would change.**
 `scripts/inspect_api_output.py` — raw API data inspection.
 `scripts/archive/` — retired one-off utilities kept for git history (BGN→EUR migration era).

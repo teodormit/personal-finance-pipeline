@@ -333,12 +333,13 @@ def test_update_category_mapping_backfills_known_subcategory(loader, conn):
     assert cls == expected_cls
 
 
-def test_update_category_mapping_overrides_specific_income(loader, conn):
-    """The second UPDATE statement re-classifies certain INCOME subcategories."""
+def test_update_category_mapping_stamps_income_type(loader, conn):
+    """income_type is set to REAL for genuine income and REFUND for expense offsets."""
     cursor = conn.cursor()
-    test_hash = f"integration-inc-{uuid.uuid4().hex[:16]}"
-    cursor.execute(
-        """
+    real_hash = f"integration-real-{uuid.uuid4().hex[:16]}"
+    refund_hash = f"integration-refund-{uuid.uuid4().hex[:16]}"
+
+    insert_sql = """
         INSERT INTO silver.transactions
             ("transaction_hash", "transaction_date", "transaction_type",
              "amount", "amount_abs", "currency", "subcategory",
@@ -348,28 +349,38 @@ def test_update_category_mapping_overrides_specific_income(loader, conn):
              "created_at", "created_by")
         VALUES (%s, %s, %s, %s, %s, %s, %s, NULL, NULL,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        (
-            test_hash,
-            datetime(2099, 1, 1),
-            "INCOME",
-            100.0,
-            100.0,
-            "EUR",
-            "Child Support",
-            2099, 1, 1, "2099-01", 4, 1, False,
-            datetime.now(),
-            "integration_test",
-        ),
-    )
+    """
+    # REAL income: subcategory that resolves to category='Income' via category_mapping
+    cursor.execute(insert_sql, (
+        real_hash, datetime(2099, 1, 1), "INCOME",
+        1000.0, 1000.0, "EUR", "Wage, invoices",
+        2099, 1, 1, "2099-01", 4, 1, False, datetime.now(), "integration_test",
+    ))
+    # REFUND: INCOME row with an expense subcategory (offsets an expense)
+    cursor.execute(insert_sql, (
+        refund_hash, datetime(2099, 1, 1), "INCOME",
+        20.0, 20.0, "EUR", "Groceries",
+        2099, 1, 1, "2099-01", 4, 1, False, datetime.now(), "integration_test",
+    ))
 
     loader._update_category_mapping(conn)
 
     cursor.execute(
-        "SELECT category, classification FROM silver.transactions "
+        "SELECT income_type, category, classification FROM silver.transactions "
         "WHERE transaction_hash = %s",
-        (test_hash,),
+        (real_hash,),
     )
-    cat, cls = cursor.fetchone()
+    income_type, cat, cls = cursor.fetchone()
+    assert income_type == "REAL"
     assert cat == "Income"
-    assert cls == "WANT"
+    assert cls is None
+
+    cursor.execute(
+        "SELECT income_type, category, classification FROM silver.transactions "
+        "WHERE transaction_hash = %s",
+        (refund_hash,),
+    )
+    income_type, cat, cls = cursor.fetchone()
+    assert income_type == "REFUND"
+    assert cat == "Food & Drinks"  # original category preserved
+    assert cls is None

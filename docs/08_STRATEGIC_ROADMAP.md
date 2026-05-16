@@ -26,6 +26,11 @@ You have a real, working medallion warehouse. That alone puts this ahead of 80% 
 
 What this signals about you: you're not just learning DE patterns, you're applying the right ones. The gaps below are not "you did this wrong" — they're "here's the next layer of seniority."
 
+### 1.1 To do after 14.05.2026
+  1. Audit trail (metadata.transaction_audit) — wire change logging into the loaders so you have a record of every insert/update to silver. Phase A Step 4.                                                                                                                
+  2. ExpenseTransformer tests — the biggest remaining coverage gap. The core 9-step cleaning logic has zero unit tests.
+  3. Alembic baseline — schema version control so future DB changes are tracked and repeatable. Phase A Step 5.
+
 ---
 
 ## 2. Critical Gaps — What Blocks the 30-Year Vision
