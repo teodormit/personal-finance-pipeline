@@ -21,7 +21,7 @@ services:
       # Uncomment and provide if you have a pg_hba.conf file
       # - ./config/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf
             # Database initialization scripts
-      - ./init_scripts:/docker-entrypoint-initdb.d
+      - ./scripts/sql/init:/docker-entrypoint-initdb.d
 
     ports:
       - "5432:5432"

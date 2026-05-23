@@ -50,6 +50,14 @@
 - Tradeoff: A manual `TRUNCATE` of silver bypasses row-level triggers and is not logged;
   backups (§2.9), not the audit trail, guard against catastrophic loss.
 
+## 2026-05-22 - DIY migration runner over Alembic; SQL restructure
+
+- Decision: `scripts/migrate.py` — custom runner, no Alembic. Tracks applied migrations in `metadata.schema_migrations` (filename + SHA-256). Each migration runs in a transaction with `audit.suppress = 'on'`. `--baseline` mode for DBs set up before the runner existed.
+- Why: Alembic's value is autogeneration from SQLAlchemy models. This project uses raw psycopg2 — autogenerate doesn't apply. DIY does the same thing with zero new dependencies.
+- Rejected: Alembic (revisit if dbt adopted in Phase C); keeping init_scripts as sole schema source (no version tracking, drift already visible in `06_alter_silver_schema.sql`).
+- SQL restructure: `init_scripts/` moved to `scripts/sql/init/`; docker-compose mount updated. Groups all SQL under `scripts/sql/`.
+- Public/private boundary: all `.sql` remains gitignored (Approach B). Approach C — anonymized seed data for a fully public-bootstrappable repo — is a planned future session.
+
 ## Revisit Triggers
 - Material score drift observed in dashboard behavior
 - Increased data volume impacting refresh performance

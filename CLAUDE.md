@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Maintain a file called MEMORY.md in this project. After any significant decision, add an entry: What was decided / Why / What was rejected and why. Read MEMORY.md at the start of every session. Never contradict a logged decision without flagging it first.
+
+When I say "session end", "wrapping up", or "let's stop here": write a session summary to MEMORY.md. Include: Worked on / Completed / In progress / Decisions made / Next session priorities.
+
+Maintain a file called ERRORS.md. When an approach takes more than 2 attempts to work, log it: What didn't work / What worked instead / Note for next time. Check ERRORS.md before suggesting approaches to similar tasks.
+
+
 ## Project Context
 
 This is a **long-term financial data warehouse** designed to run for ~30 years, not a script project. It is both a live personal finance system (real data, real decisions) and a portfolio showcase for someone transitioning from BI analyst to data engineer. Architecture decisions, code quality, and documented reasoning carry weight accordingly.
@@ -26,6 +33,12 @@ python scripts/run_pipeline.py --mode full --source api --from-date 2024-01-01 -
 python scripts/run_pipeline.py --refresh-gold notability
 python scripts/run_pipeline.py --refresh-gold save-potential
 python scripts/run_pipeline.py --refresh-gold both
+
+# Schema migrations
+python scripts/migrate.py                 # apply pending migrations
+python scripts/migrate.py --status        # list all migrations and status
+python scripts/migrate.py --dry-run       # preview pending (no changes)
+python scripts/migrate.py --baseline      # register existing files as applied (first-time only)
 
 # Tests
 python -m pytest tests/ -v
@@ -98,7 +111,7 @@ Use `%s` placeholders for query parameters — never interpolate variables into 
 
 **Environment:** load secrets with `python-dotenv`. Never hardcode credentials or tokens. DB connection details come exclusively from env vars via `src/utils/db_connector.py`.
 
-**SQL init scripts** are numbered for execution order (`01_`, `02_`, …) and run automatically when the Postgres container starts. Always schema-qualify identifiers (`silver.transactions`). Grant privileges to `teodor_admin` after creating tables. Staging scripts use `DROP IF EXISTS + CREATE`; bronze and silver are permanent.
+**SQL init scripts** live in `scripts/sql/init/`, numbered for execution order (`01_`, `02_`, …), and run automatically when the Postgres container starts (mounted to `/docker-entrypoint-initdb.d`). Schema changes after initial setup go in `scripts/sql/migrations/` and are applied via `scripts/migrate.py`. Always schema-qualify identifiers (`silver.transactions`). Grant privileges to `teodor_admin` after creating tables. Staging scripts use `DROP IF EXISTS + CREATE`; bronze and silver are permanent.
 
 **Style:** use `print()` for progress output (personal project, not a production service). Use `pathlib.Path` for file paths.
 
@@ -107,6 +120,7 @@ Use `%s` placeholders for query parameters — never interpolate variables into 
 | File | Purpose |
 |------|---------|
 | `scripts/run_pipeline.py` | Unified pipeline runner for all modes |
+| `scripts/migrate.py` | DIY schema migration runner (apply / status / dry-run / baseline) |
 | `src/loaders/incremental_load.py` | Append-only + dedupe load path |
 | `src/loaders/initial_load.py` | Full truncate + reload path |
 | `src/transformers/expense_transformer.py` | 9-step core cleaning/enrichment |
