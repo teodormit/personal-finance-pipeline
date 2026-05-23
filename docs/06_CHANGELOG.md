@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-05-22
+
+### Added
+- `scripts/migrate.py` — DIY schema migration runner. Tracks applied migrations in `metadata.schema_migrations` with SHA-256 checksums. Supports `--status`, `--dry-run`, `--baseline`. On first use run `--baseline` to register the two existing migrations without re-running them.
+
+### Changed
+- `init_scripts/` relocated to `scripts/sql/init/`. Docker Compose mount updated from `./init_scripts` to `./scripts/sql/init`.
+
+### Notes
+- Anonymized seed data for a public-bootstrappable repo (Approach C) is a planned future session.
+
 ## 2026-05-17
 
 ### Added

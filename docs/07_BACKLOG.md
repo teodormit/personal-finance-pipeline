@@ -17,6 +17,9 @@
 2. Add optional model experimentation mode in notebooks.
 3. Add lightweight benchmark script for scoring performance trends.
 
+## Phase A Remaining
+1. **Dockerize the pipeline** (Phase A §3.3) — add a `pipeline` service to `docker-compose.yml` + a `Dockerfile` so the Python pipeline runs in a container alongside Postgres. Read up on Docker volumes, service networking (`postgres:5432` vs `localhost:5432`), and the dev-vs-production image trade-off (volume-mount vs copy-code-in) before implementing. Three approaches evaluated; Approach B (volume-mount, development-friendly) recommended as starting point. Revisit when Prefect orchestration arrives in Phase B — that's when a fully self-contained image becomes necessary.
+
 ## Future Exploration
 - Dynamic weights by category family.
 - Externalized model config file (YAML/JSON) for easier non-code tuning.
