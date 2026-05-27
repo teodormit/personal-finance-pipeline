@@ -1,7 +1,9 @@
-# Backs up the finance_warehouse database from the Docker container.
+# Backs up the finance_warehouse database from the Docker container,
+# then uploads the dump to Google Drive via rclone (offsite copy).
 #
 # Run manually:   .\scripts\backup.ps1
-# Nightly schedule: register once with Task Scheduler (see README or RUNBOOK).
+# Weekly schedule: registered in Windows Task Scheduler (see RUNBOOK §Backup).
+# One-time rclone setup required before Drive upload works — see RUNBOOK §Backup.
 
 $ContainerName = "postgres_container"
 $DbName        = "finance_warehouse"
@@ -11,6 +13,8 @@ $BackupDir     = Join-Path $ProjectRoot "backups"
 $Date          = Get-Date -Format "yyyy-MM-dd"
 $DumpFile      = Join-Path $BackupDir "finance_warehouse_$Date.dump"
 $RetainDays    = 45
+$GdriveRemote  = "gdrive"
+$GdriveFolder  = "Finance Warehouse Backups"
 
 # Read POSTGRES_PASSWORD from .env (avoids hardcoding credentials)
 $EnvFile = Join-Path $ProjectRoot ".env"
@@ -44,7 +48,17 @@ if ($?) {
     exit 1
 }
 
-# Remove dumps older than 30 days
+# Upload to Google Drive (offsite copy) — non-fatal; local backup is primary
+Write-Host "Uploading to Google Drive ($GdriveRemote`:$GdriveFolder)..."
+rclone copy $DumpFile "${GdriveRemote}:${GdriveFolder}/" --log-level INFO 2>&1
+
+if ($?) {
+    Write-Host "Google Drive upload complete."
+} else {
+    Write-Host "WARNING: Google Drive upload failed. Local backup is intact." -ForegroundColor Yellow
+}
+
+# Remove dumps older than $RetainDays days
 $OldFiles = Get-ChildItem "$BackupDir\*.dump" |
     Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$RetainDays) }
 

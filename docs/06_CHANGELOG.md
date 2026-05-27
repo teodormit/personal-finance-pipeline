@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-05-27
+
+### Added
+- `scripts/backup.ps1` — rclone Google Drive upload block after each successful `pg_dump`. Remote `gdrive:Finance Backups/` receives a copy of every weekly dump. Upload is non-fatal: rclone failure prints a WARNING and does not block the local backup.
+- `docs/04_RUNBOOK.md` — "Backup & Offsite Copy" section covering the automated schedule, one-time rclone setup steps, verification commands, and restore procedure.
+
+### Notes
+- Closes Phase A item 4 (§2.9 offsite backup). Phase A is now complete.
+- rclone setup is a one-time interactive step on the host (`rclone config`). No GCP project or credential files required — rclone's built-in OAuth app handles Drive authorization.
+- `sqlfluff` CI linting (Phase A item 3 partial) was explicitly dropped from Phase A scope — no concrete SQL linting rules defined yet.
+
+## 2026-05-25
+
+### Added
+- `Dockerfile` — single-stage runtime image on `python:3.12-slim-bookworm`, non-root `pipeline` user (UID 1000), `TZ=Europe/Sofia`, layered for build cache efficiency.
+- `.dockerignore` — keeps secrets, virtualenvs, raw data, and backups out of the build context; `tests/` deliberately included so in-container `pytest` works.
+- `docker/pipeline-entrypoint.sh` — subcommand dispatcher (`pipeline` / `migrate` / `inspect` / `inspect-api` / `shell` / `bash` / `sh` / `python` / `pytest`). The verbose form (`python scripts/...`) is the documented primary path; the dispatcher is a convenience layer.
+- `.env.example` — committable template for first-time setup on a new machine.
+- `.gitattributes` — locks `*.sh`, `Dockerfile`, `docker-compose.yml` to LF endings so Windows checkouts don't break the container shebang.
+- `pipeline` service in `docker-compose.yml` — one-shot ETL runner, builds from `./Dockerfile`, joins `data_platform_network`, depends on Postgres healthy. Bind-mounts `./data`, `./logs`, `./backups`. Overrides `POSTGRES_HOST=postgres` while leaving `.env` set to `localhost` (preserves the host-Python dev path).
+- README "Run with Docker (recommended)" section documenting first-time setup, daily incremental, common subcommands, and the host-dev fallback.
+
+### Changed
+- Postgres healthcheck fixed: was `-d personal_finance` (DB doesn't exist), now `-d ${POSTGRES_DB}`. Without this fix, `depends_on: service_healthy` for the pipeline service would never trigger.
+- MinIO service and its `minio_data` volume removed from `docker-compose.yml` (unused by the pipeline; the on-disk Docker volume persists until manually pruned).
+- `.env.template` reference in README replaced with `.env.example`.
+
+### Notes
+- `metadata.schema_migrations` baselined: 001 and 002 registered as applied (the live DB already had `income_type`, the audit trigger, and `metadata.transaction_audit` — verified before recording).
+- Image lands at ~1.13 GB. Follow-up: split `requirements.txt` into runtime vs dev (move `jupyter`, `ipykernel`, `pytest`, `pytest-cov` to `requirements-dev.txt`) to drop the image to ~600 MB.
+- Orphan `personal_finance_minio` container still running from before MinIO was removed; can be stopped with `docker stop personal_finance_minio && docker rm personal_finance_minio` when convenient.
+
 ## 2026-05-22
 
 ### Added

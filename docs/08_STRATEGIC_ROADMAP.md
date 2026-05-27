@@ -171,13 +171,15 @@ The principle: every phase delivers a working improvement and unblocks the next 
 
 ### Phase A: Foundation hardening
 **Goal:** make the warehouse safe to grow.
-1. Add the `metadata.transaction_audit` change log: an `AFTER UPDATE/DELETE` trigger on `silver.transactions` records before/after values for every out-of-band correction (§2.1). No SCD Type 2 columns — see the §2.1 decision and `docs/05_DECISIONS_LOG.md`.
-2. Add Alembic, register the current schema as baseline (§3.6).
-3. Add CI with pytest + sqlfluff on push (§3.5).
-4. Set up a backup script: nightly `pg_dump` to encrypted file, offsite copy weekly (§2.9).
-5. Move pipeline into Docker (§3.3).
+1. ✅ **Done (2026-05-17)** — Audit trail: `metadata.transaction_audit` change log written by `AFTER UPDATE/DELETE` trigger on `silver.transactions` (§2.1). No SCD Type 2 — see decision log.
+2. ✅ **Done (2026-05-22)** — DIY schema migration runner: `scripts/migrate.py` tracks applied migrations in `metadata.schema_migrations` with SHA-256 checksums. Alembic rejected (no SQLAlchemy models in project). Baselined on the live DB 2026-05-25 (§3.6).
+3. 🟡 **Partial** — `.github/workflows/ci.yml` runs `pytest` on every push and PR (added 2026-05-13). `sqlfluff` for SQL linting is **not** wired up yet (§3.5).
+4. ✅ **Done (2026-05-27)** — Weekly `pg_dump` via `scripts/backup.ps1` registered in Windows Task Scheduler; rclone uploads each dump to `gdrive:Finance Backups/` after every successful run. 45-day local retention. Setup instructions in `docs/04_RUNBOOK.md §Backup` (§2.9).
+5. ✅ **Done (2026-05-25)** — Pipeline moved into Docker (§3.3). Single image, one-shot containers via `docker compose run --rm pipeline ...`, host-Python dev path preserved. See `docs/05_DECISIONS_LOG.md` (2026-05-25).
 
 **Why first:** none of these change behavior, all of them protect from data loss and silent breakage as scope expands.
+
+**Phase A status:** Complete (2026-05-27). `sqlfluff` CI linting dropped from scope — no concrete rules defined yet. Phase B can start.
 
 ### Phase B: Income gold + account balances
 **Goal:** unlock the full transaction picture — income, not just expenses.

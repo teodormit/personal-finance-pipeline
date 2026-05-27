@@ -1,9 +1,23 @@
-#version: '3.8'
+# =============================================================================
+# Personal Finance Pipeline — Docker Compose topology
+# =============================================================================
+# Two services:
+#   1. postgres  — long-lived data warehouse (the actual "product").
+#   2. pipeline  — one-shot ETL runner. Built locally from ./Dockerfile.
+#
+# Typical usage:
+#   docker compose up -d postgres
+#   docker compose run --rm pipeline python scripts/migrate.py --status
+#   docker compose run --rm pipeline python scripts/run_pipeline.py --mode incremental
+#
+# MinIO was removed (Phase A.5) — not used by the pipeline. Re-add when
+# Phase D / object-storage work begins.
+# =============================================================================
 
 services:
-#########################################################
+  # ---------------------------------------------------------------------------
   # 1. The Data Warehouse: PostgreSQL
-  #########################################################
+  # ---------------------------------------------------------------------------
   postgres:
     container_name: postgres_container
     image: postgres:17
@@ -15,69 +29,81 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PGDATA: /var/lib/postgresql/data
     volumes:
-      - postgres_data:/var/lib/postgresql/data 
+      - postgres_data:/var/lib/postgresql/data
       - ./logs/postgres:/var/log/postgresql
       - ./config/postgres/postgres.conf:/etc/postgresql/postgresql.conf
       # Uncomment and provide if you have a pg_hba.conf file
       # - ./config/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf
-            # Database initialization scripts
+      # Database initialization scripts (runs only on first init of a fresh volume)
       - ./scripts/sql/init:/docker-entrypoint-initdb.d
-
     ports:
       - "5432:5432"
     restart: unless-stopped
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d personal_finance"]
+      # FIXED (Phase A.5): was checking -d personal_finance which doesn't exist.
+      # Now uses the real database name so the pipeline's depends_on actually triggers.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - data_platform_network
 
-#########################################################
-  # 2. The Landing Zone: MinIO Object Storage (optional)
-  # Comment out if not needed - pipeline works with PostgreSQL only
-  #########################################################
-  minio:
-    image: minio/minio:latest
-    container_name: personal_finance_minio
-    restart: unless-stopped
+  # ---------------------------------------------------------------------------
+  # 2. The ETL Pipeline (one-shot — built locally from ./Dockerfile)
+  # ---------------------------------------------------------------------------
+  # Invoked via:
+  #     docker compose run --rm pipeline python scripts/run_pipeline.py ...
+  #     docker compose run --rm pipeline python scripts/migrate.py ...
+  # The `--rm` removes the exited container; Postgres keeps running.
+  # ---------------------------------------------------------------------------
+  pipeline:
+    container_name: pipeline_runner
+    image: personal-finance-pipeline:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     env_file:
       - .env
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER} ## Still loads minioadmin for some reason  # Can try Use env_file: [ .env ] plus environment: - MINIO_ROOT_USER in your docker-compose.yml, then down -v && up -d.
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    ports:
-      # Port for the MinIO API
-      - "9000:9000" 
-      # Port for the MinIO web console
-      - "9001:9001" 
+      # Inside the docker network, Postgres resolves by service name, not localhost.
+      # This override is exactly what makes the host-dev path AND the container
+      # path coexist: .env keeps localhost (for host Python), compose overrides
+      # to "postgres" (for in-container Python).
+      POSTGRES_HOST: postgres
+      # Force Sofia time so datetime.now() in run_pipeline.py matches the host's
+      # idea of "today". Without this the container would default to UTC.
+      TZ: Europe/Sofia
+    # Lets Docker handle SIGTERM forwarding & zombie reaping without needing
+    # tini inside the image.
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
-      # Persists the object storage data
-      - minio_data:/data 
+      # The host directories the pipeline reads from / writes to.
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./backups:/app/backups
     networks:
       - data_platform_network
-    command: minio server /data --console-address ":9001" # Command to start the MinIO server
+    # No `ports:` — this is a one-shot job, nothing to expose externally.
+    # No `restart:` — one-shot containers exit on success; restarting would loop.
 
-#########################################################
-  # 3. The EL (Extract-Load) Tool: Airbyte
-  #########################################################
-# Airbyte has been installed using the Airbyte CLI, so we don't need to define it here.
-# It's managed separately and can be started with `abctl local start`.
-# Use the start-platform.bat script to start the Airbyte platform and the docker containers
-
-
+# =============================================================================
+# Volumes
+# =============================================================================
 volumes:
   postgres_data:
     driver: local
-  minio_data:
-    driver: local
-  logs:
-    driver: local
+  # minio_data volume removed (Phase A.5). The on-disk Docker volume
+  # `personal-finance-pipeline_minio_data` persists until manually pruned,
+  # so reattaching it later (if MinIO returns) is non-destructive.
 
-
+# =============================================================================
+# Networks
+# =============================================================================
 networks:
   data_platform_network:
     driver: bridge
-
