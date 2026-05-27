@@ -90,7 +90,7 @@ def main():
     )
     parser.add_argument(
         "--account-filter",
-        choices=["eur", "bgn_final"],
+        choices=["eur", "bgn_final", "gf", "combined"],
         default="eur",
         help="Account filter preset (default: eur)",
     )

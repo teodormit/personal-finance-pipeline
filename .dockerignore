@@ -1,0 +1,93 @@
+# =============================================================================
+# .dockerignore — what NOT to send to the Docker build context.
+# =============================================================================
+# Critical: keeps build context small (fast builds) AND prevents secrets/PII
+# from entering image layers. NEVER remove the .env and secrets/ entries.
+# =============================================================================
+
+# --- Secrets & credentials --------------------------------------------------
+.env
+*.env
+secrets/
+credentials/
+*.pem
+*.key
+client_secret_*.json
+*-service-account*.json
+
+# --- Personal financial data ------------------------------------------------
+data/raw/*
+data/processed/*
+data/archive/*
+data/inspection/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/archive/.gitkeep
+!data/inspection/.gitkeep
+*.xlsx
+*.xls
+*.csv
+
+# --- Database backups & dumps -----------------------------------------------
+backups/
+*.dump
+*.dump.gpg
+postgres_data/
+minio_data/
+data.backup/
+
+# --- Python runtime artifacts -----------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# --- Logs & temp ------------------------------------------------------------
+logs/
+*.log
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# --- Git, IDE, OS -----------------------------------------------------------
+.git/
+.github/
+.gitignore
+.gitattributes
+.cursor/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Docs and project meta (not needed at runtime) -------------------------
+docs/
+*.md
+LICENSE
+debug-*.log
+*.code-workspace
+start-platform.bat
+
+# --- Other one-off folders --------------------------------------------------
+SQLs/
+flows/
+data_check_scripts/
+init_scripts/
+
+# NOTE: tests/ is intentionally NOT ignored — baked into the image so
+# `docker compose run --rm pipeline python -m pytest tests/` works.

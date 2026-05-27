@@ -64,3 +64,64 @@ python scripts/run_pipeline.py --refresh-gold both
 - Missing API token for API source
 - Classification not populated in silver can reduce save-potential quality
 - Small history windows for rare/new subcategories produce sparse stats
+
+---
+
+## Backup & Offsite Copy
+
+### What runs automatically
+`scripts/backup.ps1` is registered in Windows Task Scheduler (weekly). Each run:
+1. `pg_dump` inside the Postgres container → custom-format `.dump` file in `backups/`
+2. Uploads the dump to Google Drive via rclone (`gdrive:Finance Backups/`)
+3. Purges local dumps older than 45 days
+
+Run manually at any time:
+```powershell
+.\scripts\backup.ps1
+```
+
+### One-time rclone setup (required before Drive upload works)
+
+**1. Install rclone**
+```powershell
+winget install Rclone.Rclone
+```
+
+**2. Configure a Google Drive remote named `gdrive`**
+```powershell
+rclone config
+```
+At the prompts:
+- `n` → new remote
+- Name: `gdrive`
+- Storage type: `drive` (Google Drive)
+- `client_id` / `client_secret`: leave blank (uses rclone's built-in OAuth app — no GCP project needed)
+- Scope: `1` (full access)
+- `root_folder_id`: leave blank
+- `service_account_file`: leave blank
+- Auto-config: `y` → browser opens for Google account authorization
+
+**3. Create the destination folder in Drive**
+Create a folder called `Finance Backups` in your Google Drive root (or adjust `$GdriveFolder` in `backup.ps1`).
+
+**4. Verify**
+```powershell
+rclone ls gdrive:"Finance Backups"/
+```
+
+### Verifying a backup
+```powershell
+# List local dumps
+Get-ChildItem backups\*.dump | Select-Object Name, Length, LastWriteTime
+
+# List Drive copies
+rclone ls gdrive:"Finance Backups"/
+```
+
+### Restoring from a dump
+```powershell
+# Copy dump into container and restore
+docker cp backups\finance_warehouse_YYYY-MM-DD.dump postgres_container:/tmp/restore.dump
+docker exec -e "PGPASSWORD=<password>" postgres_container `
+    pg_restore -U teodor_admin -d finance_warehouse --clean /tmp/restore.dump
+```

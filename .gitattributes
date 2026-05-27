@@ -1,0 +1,10 @@
+# Ensure shell scripts always check out with LF line endings on every host.
+# Without this, Windows Git would convert docker/pipeline-entrypoint.sh to
+# CRLF, breaking the Linux container's shebang interpreter.
+*.sh text eol=lf
+docker/pipeline-entrypoint.sh text eol=lf
+
+# Other Linux-targeted text files
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+docker-compose.yml text eol=lf

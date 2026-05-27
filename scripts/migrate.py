@@ -4,12 +4,6 @@ DIY Schema Migration Runner
 
 Applies idempotent, content-checksummed SQL migrations to the warehouse.
 
-Why DIY (not Alembic):
-  No SQLAlchemy models in this project — Alembic's autogenerate feature would
-  not apply, so it would reduce to "run these SQL files in order," which is
-  exactly what this does in ~150 lines with zero new dependencies. See
-  docs/05_DECISIONS_LOG.md.
-
 Conventions:
   - Migration files live in scripts/sql/migrations/ named NNN_short_name.sql
     (three or more digits, zero-padded, lowercase snake_case suffix).

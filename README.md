@@ -30,7 +30,7 @@ Wallet CSV/XLSX  ──┘
 | Extraction | BudgetBakers REST API (Premium) or file export |
 | Transformation | Python 3.11+ with Pandas |
 | Visualization | Tableau Public |
-| Infrastructure | Docker Compose |
+| Infrastructure | Docker Compose (Postgres + containerized pipeline) |
 
 ### Database Layers (Medallion Architecture)
 
@@ -97,14 +97,66 @@ Both gold tables refresh **automatically** after each pipeline load (incremental
 
 ### Setup
 
-1. Copy `.env.template` to `.env` and set `BUDGETBAKERS_API_TOKEN`
+1. Copy `.env.example` to `.env` and fill in your credentials (Postgres + `BUDGETBAKERS_API_TOKEN`).
 2. Start PostgreSQL: `docker compose up -d postgres`
-3. Install deps: `pip install -r requirements.txt`
+3. Install deps (only needed for host-based Python runs — the Docker path doesn't need this): `pip install -r requirements.txt`
 4. Run the gold DDL scripts once:
    ```bash
    psql -U teodor_admin -d finance_warehouse -f SQLs/create_gold_transaction_notability.sql
    psql -U teodor_admin -d finance_warehouse -f SQLs/create_gold_transaction_save_potential.sql
    ```
+
+---
+
+## Run with Docker (recommended)
+
+The pipeline is packaged as a one-shot container built from `Dockerfile`. Postgres runs alongside it as a long-lived service. This is the reproducible path — it works identically on any machine with Docker, without depending on the host's Python version or virtualenv.
+
+### First-time setup on a new machine
+
+```bash
+docker compose build pipeline
+docker compose up -d postgres
+# Apply post-init schema migrations (creates income_type, audit trigger, etc.)
+docker compose run --rm pipeline python scripts/migrate.py
+# Initial full load from the BudgetBakers API
+docker compose run --rm pipeline python scripts/run_pipeline.py --mode full --source api
+```
+
+### Daily incremental run
+
+```bash
+docker compose run --rm pipeline python scripts/run_pipeline.py --mode incremental
+```
+
+### Other common commands
+
+```bash
+# Migration status
+docker compose run --rm pipeline python scripts/migrate.py --status
+
+# Dry-run inspection (no writes)
+docker compose run --rm pipeline python scripts/inspect_incremental_load.py
+
+# Tests inside the container
+docker compose run --rm pipeline python -m pytest tests/ -v
+
+# Open a shell in the container for debugging
+docker compose run --rm pipeline /bin/bash
+```
+
+The container bind-mounts `./data`, `./logs`, and `./backups` from the host, so files you drop into `data/raw/` on the host are immediately visible inside the container, and any output written to those paths persists on the host.
+
+### Host-based Python still works
+
+Running the pipeline directly on the host (against the containerized Postgres) is still fully supported and is the faster iteration path during development:
+
+```bash
+docker compose up -d postgres
+python scripts/run_pipeline.py --mode incremental
+```
+
+The `.env` file has `POSTGRES_HOST=localhost` (for host-Python → mapped 5432). Inside the pipeline container, `docker-compose.yml` overrides this to `POSTGRES_HOST=postgres` (the service name).
 
 ---
 
