@@ -50,9 +50,9 @@ if ($?) {
 
 # Upload to Google Drive (offsite copy) — non-fatal; local backup is primary
 Write-Host "Uploading to Google Drive ($GdriveRemote`:$GdriveFolder)..."
-rclone copy $DumpFile "${GdriveRemote}:${GdriveFolder}/" --log-level INFO 2>&1
+rclone copy $DumpFile "${GdriveRemote}:${GdriveFolder}/" --log-level INFO
 
-if ($?) {
+if ($LASTEXITCODE -eq 0) {
     Write-Host "Google Drive upload complete."
 } else {
     Write-Host "WARNING: Google Drive upload failed. Local backup is intact." -ForegroundColor Yellow
