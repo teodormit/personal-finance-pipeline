@@ -102,15 +102,15 @@ Both gold tables refresh **automatically** after each pipeline load (incremental
 3. Install deps (only needed for host-based Python runs — the Docker path doesn't need this): `pip install -r requirements.txt`
 4. Run the gold DDL scripts once:
    ```bash
-   psql -U teodor_admin -d finance_warehouse -f SQLs/create_gold_transaction_notability.sql
-   psql -U teodor_admin -d finance_warehouse -f SQLs/create_gold_transaction_save_potential.sql
+   psql -U $POSTGRES_USER -d finance_warehouse -f SQLs/create_gold_transaction_notability.sql
+   psql -U $POSTGRES_USER -d finance_warehouse -f SQLs/create_gold_transaction_save_potential.sql
    ```
 
 ---
 
 ## Run with Docker (recommended)
 
-The pipeline is packaged as a one-shot container built from `Dockerfile`. Postgres runs alongside it as a long-lived service. This is the reproducible path — it works identically on any machine with Docker, without depending on the host's Python version or virtualenv.
+The pipeline is packaged as a one-shot container built from `docker/Dockerfile`. Postgres runs alongside it as a long-lived service. This is the reproducible path — it works identically on any machine with Docker, without depending on the host's Python version or virtualenv.
 
 ### First-time setup on a new machine
 
@@ -252,19 +252,25 @@ python -m pytest tests/ -v
 ## Project Layout
 
 ```
-scripts/                    CLI entry points
-  run_pipeline.py             unified pipeline runner (also handles gold-only refresh via --refresh-gold)
+docker/                     Dockerfile and container entrypoint script
+scripts/
+  run_pipeline.py             unified pipeline runner (full, incremental, gold-only refresh)
+  migrate.py                  DIY migration runner (apply / status / dry-run / baseline)
+  backup.ps1                  Weekly pg_dump + rclone offsite backup to Google Drive
+  export_tableau_public.py    Anonymized CSV export for Tableau Public
+  inspect_incremental_load.py dry-run inspection (no writes)
+  sql/init/                   Schema DDL — runs automatically on first Postgres container init
+  sql/migrations/             Post-init schema migrations
 src/
   extractors/               BudgetBakers API + file extraction
   transformers/             Pandas transformation logic
     expense_transformer.py    9-step cleaning pipeline
     notable_transactions_transformer.py   z-score + notability scoring
     save_potential_transformer.py         avoidability + frequency + amount scoring
-  loaders/                  PostgreSQL loading (initial + incremental + gold)
-  utils/                    DB connection helper, hash generator
-SQLs/                       DDL scripts for gold tables
+  loaders/                  PostgreSQL loading (initial, incremental, gold upserts)
+  utils/                    DB connection helper, SHA-256 hash generator
 tests/                      Unit tests for transformers
-data/raw/                   Source export files from Wallet app
+docs/                       Architecture, data contracts, scoring model specs, runbook
 ```
 
 ---
@@ -278,3 +284,4 @@ data/raw/                   Source export files from Wallet app
 | Nov 2025 | Phase 2: simplified pipeline, BudgetBakers API extraction |
 | Mar 2026 | Initial + incremental loaders, silver layer complete |
 | Apr 2026 | Gold layer: transaction notability (z-score) + save potential scoring |
+| May 2026 | Audit trail trigger, DIY migration runner, Docker containerization, automated backup to Google Drive — Phase A complete |
