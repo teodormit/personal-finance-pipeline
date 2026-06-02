@@ -123,5 +123,5 @@ rclone ls gdrive:"Finance Backups"/
 # Copy dump into container and restore
 docker cp backups\finance_warehouse_YYYY-MM-DD.dump postgres_container:/tmp/restore.dump
 docker exec -e "PGPASSWORD=<password>" postgres_container `
-    pg_restore -U teodor_admin -d finance_warehouse --clean /tmp/restore.dump
+    pg_restore -U $POSTGRES_USER -d finance_warehouse --clean /tmp/restore.dump
 ```

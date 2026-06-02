@@ -63,7 +63,7 @@ services:
     image: personal-finance-pipeline:latest
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
     env_file:
       - .env
     environment:

@@ -103,6 +103,16 @@ temp/
 !docs/postgres_init_blueprint.sql
 
 # =====================================================
+# Internal-only docs (kept locally, not for public repo)
+# =====================================================
+docs/05_DECISIONS_LOG.md
+docs/06_CHANGELOG.md
+docs/07_BACKLOG.md
+docs/08_STRATEGIC_ROADMAP.md
+docs/09_SIMPLIFICATION_REPORT.md
+docs/AI_CONTEXT_PACK.md
+
+# =====================================================
 # IDE / OS
 # =====================================================
 .vscode/

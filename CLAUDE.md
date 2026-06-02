@@ -111,7 +111,7 @@ Use `%s` placeholders for query parameters — never interpolate variables into 
 
 **Environment:** load secrets with `python-dotenv`. Never hardcode credentials or tokens. DB connection details come exclusively from env vars via `src/utils/db_connector.py`.
 
-**SQL init scripts** live in `scripts/sql/init/`, numbered for execution order (`01_`, `02_`, …), and run automatically when the Postgres container starts (mounted to `/docker-entrypoint-initdb.d`). Schema changes after initial setup go in `scripts/sql/migrations/` and are applied via `scripts/migrate.py`. Always schema-qualify identifiers (`silver.transactions`). Grant privileges to `teodor_admin` after creating tables. Staging scripts use `DROP IF EXISTS + CREATE`; bronze and silver are permanent.
+**SQL init scripts** live in `scripts/sql/init/`, numbered for execution order (`01_`, `02_`, …), and run automatically when the Postgres container starts (mounted to `/docker-entrypoint-initdb.d`). Schema changes after initial setup go in `scripts/sql/migrations/` and are applied via `scripts/migrate.py`. Always schema-qualify identifiers (`silver.transactions`). Grant privileges to `$POSTGRES_USER` after creating tables. Staging scripts use `DROP IF EXISTS + CREATE`; bronze and silver are permanent.
 
 **Style:** use `print()` for progress output (personal project, not a production service). Use `pathlib.Path` for file paths.
 
