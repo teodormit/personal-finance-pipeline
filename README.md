@@ -1,6 +1,16 @@
 # Personal Finance Pipeline
 
-A self-hosted, automated ETL pipeline that turns personal expense data from the Wallet (BudgetBakers) app into a structured, analytics-ready data warehouse in PostgreSQL -- with gold-layer intelligence and Tableau visualization.
+A self-hosted, automated ETL pipeline that turns personal expense and income data from the Wallet (BudgetBakers) app into a structured, analytics-ready data warehouse in PostgreSQL — with gold-layer intelligence and Tableau visualization.
+
+**What this demonstrates:** a genuine medallion data warehouse (`staging → bronze → silver → gold`) with content-hash deduplication and an idempotent, safely re-runnable pipeline; two custom gold scoring models that flag *unusual* spending and *avoidable* spending at the individual-transaction level; and production-minded engineering — an audit-trail trigger, a checksummed migration runner, automated offsite backups, Docker-packaged runs, and a CI-tested codebase. Built to run for decades, not a weekend.
+
+<!--
+  Dashboard preview — enable once the anonymized dashboard is published to Tableau Public.
+  Save the screenshot as docs/images/dashboard.png and provide the published viz URL below.
+  See docs/images/README.md for the specification and the anonymized-data requirement.
+
+[![Personal-finance dashboard — spend trends, notable outliers, save-potential](docs/images/dashboard.png)](https://public.tableau.com/app/profile/YOUR_PROFILE/viz/YOUR_VIZ)
+-->
 
 ---
 
@@ -16,10 +26,17 @@ A self-hosted, automated ETL pipeline that turns personal expense data from the 
 
 ## Architecture
 
-```
-BudgetBakers API  ──┐
-                    ├──> Extract ──> Transform ──> Load ──> PostgreSQL ──> Tableau
-Wallet CSV/XLSX  ──┘
+```mermaid
+flowchart LR
+    API[BudgetBakers API] --> EX[Extract]
+    FILE[Wallet CSV / XLSX] --> EX
+    EX --> TR["Transform · Pandas<br/>clean · enrich · SHA-256 dedup"]
+    subgraph PG["PostgreSQL · medallion warehouse"]
+        direction LR
+        ST[(staging)] --> BZ[(bronze)] --> SI[(silver)] --> GO[(gold)]
+    end
+    TR --> ST
+    GO --> TAB[Tableau]
 ```
 
 ### Technology Stack
@@ -40,7 +57,7 @@ Wallet CSV/XLSX  ──┘
 | `bronze` | Raw data as received, append-only immutable archive |
 | `silver` | Cleaned, deduplicated, and enriched -- main analytics layer |
 | `gold` | Pre-computed transaction-level intelligence (notability, save potential) |
-| `metadata` | Pipeline run logs and data quality issues |
+| `metadata` | Pipeline run logs, schema-migration tracking, and the silver audit trail |
 
 ### Key Features
 
@@ -122,17 +139,19 @@ The pipeline is packaged as a one-shot container built from `docker/Dockerfile`.
 ```bash
 docker compose build pipeline
 docker compose up -d postgres
-# Apply post-init schema migrations (creates income_type, audit trigger, etc.)
-docker compose run --rm pipeline python scripts/migrate.py
-# Initial full load from the BudgetBakers API
+# Create the schema once — see Setup step 4 (applies docs/postgres_init_blueprint.sql).
+# Then run an initial full load from the BudgetBakers API:
 docker compose run --rm pipeline python scripts/run_pipeline.py --mode full --source api
 ```
 
-> **Forking this repo?** The auto-init scripts and migrations above are the
-> owner's private files (gitignored). To build the schema from the public repo,
-> skip `migrate.py` and apply the blueprint once instead:
-> `psql -d finance_warehouse -f docs/postgres_init_blueprint.sql` (see Setup
-> step 4). It already includes the `income_type` column and the audit trigger.
+Other ways to seed the warehouse on the first run:
+
+- **From a file export** — `run_pipeline.py --mode full --source file --file data/raw/full_export.xlsx`
+- **From a backup** — restore a `pg_dump` produced by `scripts/backup.ps1` (see `docs/04_RUNBOOK.md`); this is the recovery / machine-migration path.
+
+> **Forking this repo?** `docker compose up -d postgres` auto-runs the owner's
+> private init scripts, which aren't in the public repo — build the schema from
+> the blueprint instead (Setup step 4). It's complete and standalone.
 
 ### Daily incremental run
 
@@ -140,12 +159,9 @@ docker compose run --rm pipeline python scripts/run_pipeline.py --mode full --so
 docker compose run --rm pipeline python scripts/run_pipeline.py --mode incremental
 ```
 
-### Other common commands
+### Other useful commands
 
 ```bash
-# Migration status
-docker compose run --rm pipeline python scripts/migrate.py --status
-
 # Dry-run inspection (no writes)
 docker compose run --rm pipeline python scripts/inspect_incremental_load.py
 
@@ -155,6 +171,12 @@ docker compose run --rm pipeline python -m pytest tests/ -v
 # Open a shell in the container for debugging
 docker compose run --rm pipeline /bin/bash
 ```
+
+### Schema migrations
+
+Schema changes after initial setup are applied with `scripts/migrate.py`, a
+small checksummed migration runner (`--status`, `--dry-run`, `--baseline`).
+It's only needed when the schema evolves — not for routine pipeline runs.
 
 The container bind-mounts `./data`, `./logs`, and `./backups` from the host, so files you drop into `data/raw/` on the host are immediately visible inside the container, and any output written to those paths persists on the host.
 
@@ -262,10 +284,10 @@ python -m pytest tests/ -v
 
 ## Tableau
 
-- Connect to `silver.transactions` for raw analytics
-- Join `gold.transaction_notability` and `gold.transaction_save_potential` on `transaction_hash` for scoring columns
-- Filter by `year_month`, color by `notability_label` or `save_potential_label`
-- Refresh data extract after each pipeline run
+- Connect to `silver.transactions` for the analytics base
+- Join `gold.transaction_notability` and `gold.transaction_save_potential` on `transaction_hash` to bring in the scoring columns
+- Load your data into the sample dashboard, or build your own views on top of these tables
+- Refresh the extract after each pipeline run
 
 ---
 
@@ -277,7 +299,7 @@ scripts/
   run_pipeline.py             unified pipeline runner (full, incremental, gold-only refresh)
   migrate.py                  DIY migration runner (apply / status / dry-run / baseline)
   backup.ps1                  Weekly pg_dump + rclone offsite backup to Google Drive
-  export_tableau_public.py    Anonymized CSV export for Tableau Public
+  anonymization_finance_data.py  Anonymized CSV export for Tableau Public
   inspect_incremental_load.py dry-run inspection (no writes)
   sql/init/                   Schema DDL — runs automatically on first Postgres container init (owner's private files)
   sql/migrations/             Post-init schema migrations (owner's private files)
