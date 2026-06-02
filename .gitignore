@@ -113,6 +113,14 @@ docs/09_SIMPLIFICATION_REPORT.md
 docs/AI_CONTEXT_PACK.md
 
 # =====================================================
+# Legacy / local-only files (untracked, kept on disk)
+# =====================================================
+MEMORY.md
+architecture_doc.md
+repo_structure.md
+start-platform.bat
+
+# =====================================================
 # IDE / OS
 # =====================================================
 .vscode/

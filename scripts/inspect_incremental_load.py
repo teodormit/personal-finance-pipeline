@@ -226,12 +226,11 @@ def main():
     bronze_df["source_row_number"] = range(1, len(bronze_df) + 1)
     bronze_df["ingestion_timestamp"] = datetime.now()
     bronze_df["ingestion_batch_id"] = str(batch_id)
-    bronze_df["has_quality_issues"] = False
     bronze_columns = [
         "transaction_date", "description", "transaction_type", "payee",
         "amount", "labels", "account_name", "subcategory", "currency",
         "payment_method", "source_file", "source_row_number",
-        "ingestion_timestamp", "ingestion_batch_id", "has_quality_issues",
+        "ingestion_timestamp", "ingestion_batch_id",
     ]
     bronze_df = bronze_df[[c for c in bronze_columns if c in bronze_df.columns]]
 

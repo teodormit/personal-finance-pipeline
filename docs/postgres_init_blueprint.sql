@@ -1,17 +1,30 @@
 -- =============================================================================
--- Personal Finance Warehouse - Postgres Init Blueprint
+-- Personal Finance Warehouse - Complete Postgres Schema
 -- =============================================================================
--- Purpose: Public, sanitized reference of the database schema.
---          The real init_scripts/*.sql files are gitignored because they
---          contain owner-specific seed data and grants. This blueprint shows
---          the architecture and table shapes for portfolio readers and for
---          anyone forking the project.
+-- This single file reconstructs the entire warehouse from scratch: all five
+-- schemas (staging -> bronze -> silver -> gold, plus the metadata sidecar),
+-- every table and index, and the silver audit trigger. Running it against an
+-- empty database yields the exact architecture the pipeline expects.
 --
--- Layout: staging  -> bronze -> silver -> gold + metadata sidecar
+--   Layout:  staging -> bronze -> silver -> gold   (+ metadata sidecar)
 --
--- To run a real instance, copy this into your own numbered files under
--- init_scripts/ (Docker mounts it at /docker-entrypoint-initdb.d) and
--- replace :admin_role with your own Postgres role.
+-- Run it once against a fresh, empty database:
+--
+--   createdb finance_warehouse
+--   psql -d finance_warehouse -f docs/postgres_init_blueprint.sql
+--
+-- Notes:
+--   * This warehouse is modelled against the BudgetBakers (Wallet) data shape:
+--     the staging columns mirror the Wallet CSV/XLSX export, and the
+--     category_mapping taxonomy below is Wallet's full category/subcategory set.
+--   * The owning role defaults to `pipeline_admin` (see the \set just below).
+--     Either create that role first, or edit the \set line to your own role.
+--   * The category_mapping seed below is the complete classification taxonomy
+--     the live warehouse uses - WANT/NEED/MUST per subcategory, NULL for income
+--     rows (income carries no avoidability classification).
+--   * Owner-specific seed data lives in private scripts/sql/ files that are not
+--     part of the public repo; this blueprint is the canonical, sanitized
+--     schema of record and is kept in sync with the live warehouse.
 -- =============================================================================
 
 \set admin_role pipeline_admin
@@ -70,9 +83,7 @@ CREATE TABLE IF NOT EXISTS bronze.transactions_raw (
     source_file           VARCHAR(255) NOT NULL,
     source_row_number     INTEGER,
     ingestion_timestamp   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ingestion_batch_id    UUID         NOT NULL,
-    has_quality_issues    BOOLEAN      DEFAULT FALSE,
-    quality_issue_details JSONB
+    ingestion_batch_id    UUID         NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_bronze_date     ON bronze.transactions_raw(transaction_date DESC);
@@ -85,19 +96,109 @@ CREATE TABLE IF NOT EXISTS silver.category_mapping (
     mapping_id     SERIAL PRIMARY KEY,
     subcategory    VARCHAR(100) NOT NULL UNIQUE,
     category       VARCHAR(100) NOT NULL,
-    classification VARCHAR(20)  DEFAULT 'NEED' CHECK (classification IN ('NEED', 'WANT', 'MUST')),
+    -- NULL is allowed: income subcategories carry no NEED/WANT/MUST classification.
+    classification VARCHAR(20)  DEFAULT 'NEED' CHECK (classification IS NULL OR classification IN ('NEED', 'WANT', 'MUST')),
     created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
 );
 
--- Sample seed rows (extend with the subcategories your source actually emits)
+-- Full classification taxonomy, grouped by BudgetBakers (Wallet) category.
+-- Income subcategories carry NULL classification (no avoidability meaning).
 INSERT INTO silver.category_mapping (subcategory, category, classification) VALUES
-    ('Groceries',     'Food & Drinks',        'NEED'),
-    ('Bar, cafe',     'Food & Drinks',        'WANT'),
-    ('Public transport', 'Transportation',    'NEED'),
-    ('Rent',          'Housing',              'MUST'),
-    ('Clothes & shoes', 'Shopping',           'WANT'),
-    ('Wage, invoices', 'Income',              'NEED')
+    -- Communication, PC
+    ('Internet',                    'Communication, PC',    'NEED'),
+    ('Phone, cell phone',           'Communication, PC',    'NEED'),
+    ('Postal services',             'Communication, PC',    'NEED'),
+    ('Software, apps, games',       'Communication, PC',    'WANT'),
+    -- Financial expenses
+    ('Advisory',                    'Financial expenses',   'MUST'),
+    ('Charges, Fees',               'Financial expenses',   'MUST'),
+    ('Child Support',               'Financial expenses',   'MUST'),
+    ('Fines',                       'Financial expenses',   'MUST'),
+    ('Insurances',                  'Financial expenses',   'MUST'),
+    ('Loan, interests',             'Financial expenses',   'MUST'),
+    ('Taxes',                       'Financial expenses',   'MUST'),
+    -- Food & Drinks
+    ('Food & Drinks',               'Food & Drinks',        'NEED'),
+    ('Groceries',                   'Food & Drinks',        'NEED'),
+    ('Bar, cafe',                   'Food & Drinks',        'WANT'),
+    -- Housing
+    ('Energy, utilities',           'Housing',              'MUST'),
+    ('Maintenance, repairs',        'Housing',              'MUST'),
+    ('Mortgage',                    'Housing',              'MUST'),
+    ('Property insurance',          'Housing',              'MUST'),
+    ('Rent',                        'Housing',              'MUST'),
+    ('Services',                    'Housing',              'MUST'),
+    -- Income (classification NULL by design)
+    ('Aliments',                    'Income',               NULL),
+    ('Bonus, extra income',         'Income',               NULL),
+    ('Checks, coupons',             'Income',               NULL),
+    ('Dues & grants',               'Income',               NULL),
+    ('Gifts',                       'Income',               NULL),
+    ('Interests, dividends',        'Income',               NULL),
+    ('Investment income',           'Income',               NULL),
+    ('Lending, renting',            'Income',               NULL),
+    ('Other income',                'Income',               NULL),
+    ('Refunds',                     'Income',               NULL),
+    ('Refunds (tax, purchase)',     'Income',               NULL),
+    ('Rental income',               'Income',               NULL),
+    ('Sale',                        'Income',               NULL),
+    ('Wage, invoices',              'Income',               NULL),
+    -- Investments
+    ('Collections',                 'Investments',          'WANT'),
+    ('Cryptocurrency',              'Investments',          'WANT'),
+    ('Financial investments',       'Investments',          'WANT'),
+    ('Investments',                 'Investments',          'WANT'),
+    ('Realty',                      'Investments',          'WANT'),
+    ('Savings',                     'Investments',          'WANT'),
+    ('Stocks, bonds',               'Investments',          'WANT'),
+    ('Vehicles, chattels',          'Investments',          'WANT'),
+    -- Life & Entertainment
+    ('Active sport, fitness',       'Life & Entertainment', 'WANT'),
+    ('Alcohol, tobacco',            'Life & Entertainment', 'WANT'),
+    ('Books, audio, subscriptions', 'Life & Entertainment', 'WANT'),
+    ('Charity, gifts',              'Life & Entertainment', 'WANT'),
+    ('Culture, sport events',       'Life & Entertainment', 'WANT'),
+    ('Education, development',       'Life & Entertainment', 'WANT'),
+    ('Health care, doctor',         'Life & Entertainment', 'WANT'),
+    ('Hobbies',                     'Life & Entertainment', 'WANT'),
+    ('Holiday, trips, hotels',      'Life & Entertainment', 'WANT'),
+    ('Life events',                 'Life & Entertainment', 'WANT'),
+    ('Lottery, gambling',           'Life & Entertainment', 'WANT'),
+    ('TV, Streaming',               'Life & Entertainment', 'WANT'),
+    ('Wellness, beauty',            'Life & Entertainment', 'WANT'),
+    -- Other
+    ('Other',                       'Other',                'WANT'),
+    ('Uncategorized',               'Other',                'WANT'),
+    ('Unknown Expense',             'Other',                'WANT'),
+    ('UNKNOWNN_CATEGORY',           'Other',                'WANT'),
+    -- Shopping
+    ('Clothes & shoes',             'Shopping',             'WANT'),
+    ('Drug-store, chemist',         'Shopping',             'WANT'),
+    ('Electronics, accessories',    'Shopping',             'WANT'),
+    ('Free time',                   'Shopping',             'WANT'),
+    ('Gifts, joy',                  'Shopping',             'WANT'),
+    ('Health and beauty',           'Shopping',             'WANT'),
+    ('Home, garden',                'Shopping',             'WANT'),
+    ('Jewels, accessories',         'Shopping',             'WANT'),
+    ('Kids',                        'Shopping',             'WANT'),
+    ('Pets, animals',               'Shopping',             'WANT'),
+    ('Stationary, tools',           'Shopping',             'WANT'),
+    -- Transfers
+    ('Transfer',                    'Transfers',            'WANT'),
+    ('Transfer, withdraw',          'Transfers',            'WANT'),
+    -- Transportation
+    ('Business trips',              'Transportation',       'NEED'),
+    ('Long distance',               'Transportation',       'NEED'),
+    ('Public transport',            'Transportation',       'NEED'),
+    ('Taxi',                        'Transportation',       'NEED'),
+    -- Vehicle
+    ('Fuel',                        'Vehicle',              'NEED'),
+    ('Leasing',                     'Vehicle',              'NEED'),
+    ('Parking',                     'Vehicle',              'NEED'),
+    ('Rentals',                     'Vehicle',              'NEED'),
+    ('Vehicle insurance',           'Vehicle',              'NEED'),
+    ('Vehicle maintenance',         'Vehicle',              'NEED')
 ON CONFLICT (subcategory) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS silver.transactions (
@@ -128,6 +229,11 @@ CREATE TABLE IF NOT EXISTS silver.transactions (
     subcategory          VARCHAR(100) NOT NULL,
     category             VARCHAR(100),                            -- enriched via category_mapping
     classification       VARCHAR(20),
+
+    -- Income semantics: NULL = expense row; REAL = genuine income stream
+    -- (salary, dividends, child support); REFUND = expense offset logged as
+    -- income in the source (reimbursements, purchase refunds).
+    income_type          VARCHAR(10)  DEFAULT NULL CHECK (income_type IS NULL OR income_type IN ('REAL', 'REFUND')),
 
     account_name         VARCHAR(100),
     payment_method       VARCHAR(100),
@@ -193,7 +299,7 @@ CREATE TABLE IF NOT EXISTS gold.transaction_save_potential (
 );
 
 -- -----------------------------------------------------------------------------
--- 6. Metadata - run logs and DQ tracking
+-- 6. Metadata - pipeline run logs
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS metadata.pipeline_runs (
     run_id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -215,20 +321,96 @@ CREATE TABLE IF NOT EXISTS metadata.pipeline_runs (
     stack_trace              TEXT
 );
 
-CREATE TABLE IF NOT EXISTS metadata.data_quality_issues (
-    issue_id           SERIAL PRIMARY KEY,
-    run_id             UUID REFERENCES metadata.pipeline_runs(run_id),
-    issue_timestamp    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    severity           VARCHAR(20) NOT NULL CHECK (severity IN ('ERROR', 'WARNING', 'INFO')),
-    issue_type         VARCHAR(100) NOT NULL,
-    issue_description  TEXT NOT NULL,
-    affected_row_data  JSONB,
-    source_file        VARCHAR(255),
-    source_row_number  INTEGER
+-- -----------------------------------------------------------------------------
+-- 7. Audit log - immutable change log for silver.transactions
+-- -----------------------------------------------------------------------------
+-- Records every out-of-band UPDATE/DELETE of a settled silver row (including
+-- manual SQL corrections). INSERTs are not audited - bronze.transactions_raw
+-- plus created_at/created_by already lineage ingestion. Pipeline writes are
+-- excluded via the `audit.suppress` session flag (set by the loaders). SCD
+-- Type 2 was deliberately rejected in favour of this log.
+CREATE TABLE IF NOT EXISTS metadata.transaction_audit (
+    audit_id          BIGSERIAL PRIMARY KEY,
+    transaction_id    BIGINT      NOT NULL,                       -- silver id at change time; not stable across a full rebuild
+    transaction_hash  VARCHAR(64) NOT NULL,                       -- stable business key; follow a row across its lifetime
+    change_timestamp  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    change_type       VARCHAR(10) NOT NULL CHECK (change_type IN ('UPDATE', 'DELETE')),
+    changed_fields    TEXT[],                                     -- columns whose value changed (UPDATE only)
+    old_values        JSONB,                                      -- UPDATE: changed cols before; DELETE: the whole removed row
+    new_values        JSONB,                                      -- UPDATE: changed cols after; DELETE: NULL
+    changed_by        VARCHAR(100) NOT NULL,                      -- audit.actor session setting, else the DB role
+    change_reason     TEXT                                        -- optional audit.reason session setting
 );
 
+CREATE INDEX IF NOT EXISTS idx_transaction_audit_hash ON metadata.transaction_audit(transaction_hash);
+CREATE INDEX IF NOT EXISTS idx_transaction_audit_time ON metadata.transaction_audit(change_timestamp DESC);
+
+-- Trigger function: diffs OLD vs NEW, logs only the columns that actually
+-- changed, and skips pipeline ingestion when audit.suppress = 'on'.
+CREATE OR REPLACE FUNCTION metadata.fn_audit_transaction_change()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_actor    TEXT := coalesce(current_setting('audit.actor', true), current_user);
+    v_reason   TEXT := current_setting('audit.reason', true);
+    v_old      JSONB;
+    v_new      JSONB;
+    v_changed  TEXT[] := ARRAY[]::TEXT[];
+    v_old_diff JSONB := '{}'::JSONB;
+    v_new_diff JSONB := '{}'::JSONB;
+    k          TEXT;
+BEGIN
+    -- Pipeline ingestion is not an auditable correction - skip it.
+    IF current_setting('audit.suppress', true) = 'on' THEN
+        RETURN NULL;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        INSERT INTO metadata.transaction_audit
+            (transaction_id, transaction_hash, change_type,
+             changed_fields, old_values, new_values, changed_by, change_reason)
+        VALUES
+            (OLD.transaction_id, OLD.transaction_hash, 'DELETE',
+             NULL, to_jsonb(OLD), NULL, v_actor, v_reason);
+        RETURN NULL;
+    END IF;
+
+    -- TG_OP = 'UPDATE': diff old vs new, log only the columns that changed.
+    v_old := to_jsonb(OLD);
+    v_new := to_jsonb(NEW);
+
+    FOR k IN SELECT jsonb_object_keys(v_new) LOOP
+        IF (v_old -> k) IS DISTINCT FROM (v_new -> k) THEN
+            v_changed  := array_append(v_changed, k);
+            v_old_diff := v_old_diff || jsonb_build_object(k, v_old -> k);
+            v_new_diff := v_new_diff || jsonb_build_object(k, v_new -> k);
+        END IF;
+    END LOOP;
+
+    -- Nothing actually changed - don't log noise.
+    IF array_length(v_changed, 1) IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    INSERT INTO metadata.transaction_audit
+        (transaction_id, transaction_hash, change_type,
+         changed_fields, old_values, new_values, changed_by, change_reason)
+    VALUES
+        (NEW.transaction_id, NEW.transaction_hash, 'UPDATE',
+         v_changed, v_old_diff, v_new_diff, v_actor, v_reason);
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_audit_transaction ON silver.transactions;
+CREATE TRIGGER trg_audit_transaction
+    AFTER UPDATE OR DELETE ON silver.transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION metadata.fn_audit_transaction_change();
+
 -- -----------------------------------------------------------------------------
--- 7. Grants - replace :admin_role with your Postgres role before running
+-- 8. Grants - replace :admin_role with your Postgres role before running
 -- -----------------------------------------------------------------------------
 GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA staging,  bronze, silver, gold, metadata TO :admin_role;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA staging,  bronze, silver, gold, metadata TO :admin_role;

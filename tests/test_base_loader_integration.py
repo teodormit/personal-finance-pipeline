@@ -252,7 +252,7 @@ def test_load_bronze_appends_without_truncating(loader, conn):
     cursor.execute(
         """
         SELECT transaction_date, description, account_name, payment_method,
-               ingestion_batch_id, has_quality_issues
+               ingestion_batch_id
         FROM bronze.transactions_raw
         WHERE ingestion_batch_id = %s
         """,
@@ -263,7 +263,6 @@ def test_load_bronze_appends_without_truncating(loader, conn):
     for r in rows:
         assert r[2] == "Cash in Euro"  # account → account_name rename
         assert r[3] == "card"  # payment_method passthrough
-        assert r[5] is False  # has_quality_issues default
 
 
 # ---------------------------------------------------------------------------

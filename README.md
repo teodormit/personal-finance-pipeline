@@ -100,11 +100,16 @@ Both gold tables refresh **automatically** after each pipeline load (incremental
 1. Copy `.env.example` to `.env` and fill in your credentials (Postgres + `BUDGETBAKERS_API_TOKEN`).
 2. Start PostgreSQL: `docker compose up -d postgres`
 3. Install deps (only needed for host-based Python runs — the Docker path doesn't need this): `pip install -r requirements.txt`
-4. Run the gold DDL scripts once:
+4. Create the schema. The entire warehouse — all five schemas, every table and
+   index, and the silver audit trigger — is defined in a single file you can run
+   once against an empty database:
    ```bash
-   psql -U $POSTGRES_USER -d finance_warehouse -f SQLs/create_gold_transaction_notability.sql
-   psql -U $POSTGRES_USER -d finance_warehouse -f SQLs/create_gold_transaction_save_potential.sql
+   psql -U $POSTGRES_USER -d finance_warehouse -f docs/postgres_init_blueprint.sql
    ```
+   This is the canonical, sanitized schema of record. (The owner's live instance
+   is built from private numbered scripts under `scripts/sql/`, which carry
+   owner-specific seed data and grants and are not part of the public repo — the
+   blueprint stays in sync with them.)
 
 ---
 
@@ -122,6 +127,12 @@ docker compose run --rm pipeline python scripts/migrate.py
 # Initial full load from the BudgetBakers API
 docker compose run --rm pipeline python scripts/run_pipeline.py --mode full --source api
 ```
+
+> **Forking this repo?** The auto-init scripts and migrations above are the
+> owner's private files (gitignored). To build the schema from the public repo,
+> skip `migrate.py` and apply the blueprint once instead:
+> `psql -d finance_warehouse -f docs/postgres_init_blueprint.sql` (see Setup
+> step 4). It already includes the `income_type` column and the audit trigger.
 
 ### Daily incremental run
 
@@ -232,6 +243,15 @@ These are **not needed** for normal pipeline runs -- gold refreshes automaticall
 
 ---
 
+## Orchestration (planned)
+
+Today the pipeline is triggered manually (or via OS schedulers — cron / Windows
+Task Scheduler). Scheduled, observable runs via **Prefect** are on the roadmap; a
+flow prototype lives in `flows/expense_pipeline_flow.py`. Prefect is intentionally
+left out of `requirements.txt` until it's wired in, so the install stays lean.
+
+---
+
 ## Run Tests
 
 ```bash
@@ -259,8 +279,8 @@ scripts/
   backup.ps1                  Weekly pg_dump + rclone offsite backup to Google Drive
   export_tableau_public.py    Anonymized CSV export for Tableau Public
   inspect_incremental_load.py dry-run inspection (no writes)
-  sql/init/                   Schema DDL — runs automatically on first Postgres container init
-  sql/migrations/             Post-init schema migrations
+  sql/init/                   Schema DDL — runs automatically on first Postgres container init (owner's private files)
+  sql/migrations/             Post-init schema migrations (owner's private files)
 src/
   extractors/               BudgetBakers API + file extraction
   transformers/             Pandas transformation logic

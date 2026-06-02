@@ -26,8 +26,10 @@ requests
 # Logging
 loguru
 
-# Orchestration
-prefect>=3.0
+# Orchestration (planned — not yet wired into the pipeline).
+# A Prefect flow prototype lives in flows/expense_pipeline_flow.py; uncomment
+# when scheduled runs are adopted (Phase B). Today runs are triggered manually.
+# prefect>=3.0
 
 # Google Drive Integration (Phase 2)
 # google-auth2
