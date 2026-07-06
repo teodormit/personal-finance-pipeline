@@ -27,6 +27,10 @@ data/inspection/*
 *.xls
 *.csv
 
+# Tableau workbooks (.twbx packages the real data extract)
+data/workbooks/
+*.twbx
+
 # Standalone analysis scripts working on personal data
 data_check_scripts/
 # Cursor state files
