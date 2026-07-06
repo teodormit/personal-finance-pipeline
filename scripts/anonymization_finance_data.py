@@ -18,8 +18,13 @@ Anonymization applied:
   5. labels          → cleared to NULL (free-text user tags)
   6. amounts         → all monetary columns scaled by SCALE constant;
                        gold EUR stats (hist_avg/std) scaled consistently
-  7. z-score columns → scaled by SCALE to prevent back-calculation from
-                       scaled amounts + raw z-scores
+  7. reason text     → euro figures embedded in notability_reason (e.g.
+                       "avg €420") scaled by SCALE so they stay consistent
+                       with the scaled amount columns
+
+z-score columns are left unscaled: a z-score is scale-invariant, so scaling
+the amount and its mean/std by the same factor leaves z unchanged. Scaling z
+would only make it inconsistent with the visible scaled amounts.
 
 transaction_hash is kept as-is — it is an opaque SHA-256 digest with no
 human-readable personal data.
@@ -31,11 +36,20 @@ Run:
   docker compose run --rm pipeline python scripts/anonymization_finance_data.py
 """
 
+import re
 import sys
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
+
+# Windows consoles default to cp1252, which cannot encode the '→'/'€' glyphs
+# printed below; force UTF-8 so a successful run never crashes on output.
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 _project_root = Path(__file__).resolve().parent.parent
 _src_path = _project_root / "src"
@@ -58,11 +72,12 @@ AMOUNT_COLS = (
 
 GOLD_EUR_STAT_COLS = ("hist_avg_amount_eur", "hist_std_amount_eur")
 
-# Perturbed to prevent back-calculation from scaled amounts + raw z-scores
-Z_SCORE_COLS = ("amount_z_score",)
+# Free-text reason columns may embed real euro figures (e.g. "avg €420");
+# these are scaled to stay consistent with the scaled amount columns.
+REASON_COLS = ("notability_reason", "save_potential_reason")
 
-# Pure pipeline internals — no dashboard value
-DROP_COLS = {"source_raw_id", "created_by"}
+# Pure pipeline internals & source-system identifiers — no dashboard value
+DROP_COLS = {"source_raw_id", "created_by", "source_record_id", "category_id"}
 
 # ---------------------------------------------------------------------------
 # Description synthesis — merchant names & city rules
@@ -224,6 +239,16 @@ ORDER BY t.transaction_date, t.transaction_id
 # Anonymization helpers
 # ---------------------------------------------------------------------------
 
+_EUR_IN_TEXT_RE = re.compile(r"€(\d+(?:\.\d+)?)")
+
+
+def _scale_euros_in_text(value):
+    """Scale any '€<number>' figure embedded in a free-text string by SCALE."""
+    if not isinstance(value, str):
+        return value
+    return _EUR_IN_TEXT_RE.sub(lambda m: f"€{float(m.group(1)) * SCALE:.0f}", value)
+
+
 def _rank_aliases(series: pd.Series, prefix: str, max_rank: int = None) -> pd.Series:
     """Replace real values with frequency-ranked aliases; keep NULL/empty as NULL.
 
@@ -273,10 +298,10 @@ def _anonymize(df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = (pd.to_numeric(df[col], errors="coerce") * SCALE).round(2)
 
-    # scale z-score columns
-    for col in Z_SCORE_COLS:
+    # scale euro figures embedded in free-text reason columns
+    for col in REASON_COLS:
         if col in df.columns:
-            df[col] = (pd.to_numeric(df[col], errors="coerce") * SCALE).round(4)
+            df[col] = df[col].map(_scale_euros_in_text)
 
     return df
 
