@@ -24,8 +24,10 @@ ACCOUNT_FILTER_PRESETS = {
     "eur": {
         "allowed_accounts": [
             "UniCredit Bulbank - 1522449108EUR",
-            "Cash in Euro",
+            "Cash in Euro",  # old name, still used in some historical records
+            "Cash in Euro - Teo",
             "Google Pay",
+            "Revolut - Teo - EUR",
         ],
         "account_end_dates": {},
     },
@@ -40,6 +42,7 @@ ACCOUNT_FILTER_PRESETS = {
         "allowed_accounts": [
             "Pepi - UniCredit Bulbank - 1524149621EUR",
             "Pepi - Cash",
+            "Pepi - Revolut - EUR",
         ],
         "account_end_dates": {},
     },
@@ -47,9 +50,12 @@ ACCOUNT_FILTER_PRESETS = {
         "allowed_accounts": [
             "UniCredit Bulbank - 1522449108EUR",
             "Cash in Euro",
+            "Cash in Euro - Teo",
+            "Revolut - Teo - EUR",
             "Google Pay",
             "Pepi - UniCredit Bulbank - 1524149621EUR",
             "Pepi - Cash",
+            "Pepi - Revolut - EUR",
         ],
         "account_end_dates": {},
     },

@@ -1,43 +1,23 @@
-# Core Data Processing
+# Core data processing
 pandas
 numpy
 
-# Excel File Support
-openpyxl # For .xlsx files
-xlrd 
+# Excel (.xlsx) support for file-based loads
+openpyxl
 
-# Database Connectivity
+# Database
 psycopg2-binary
-sqlalchemy
 
-# Object Storage (MinIO/S3)
-minio
-boto3
-
-# Data Validation
-pydantic
-pydantic-settings
-
-# Utilities
+# Config / secrets
 python-dotenv
-pyyaml
+
+# HTTP (BudgetBakers API)
 requests
 
-# Logging
-loguru
+# Orchestration (planned — not yet wired; prototype in flows/expense_pipeline_flow.py)
+# prefect>=3.0
 
-# Orchestration
-prefect>=3.0
-
-# Google Drive Integration (Phase 2)
-# google-auth2
-# google-auth-oauthlib
-# google-auth-httplib2
-# google-api-python-client.0
-
-dotenv
-
-# Development & Testing
+# Testing
 pytest
 pytest-cov
 

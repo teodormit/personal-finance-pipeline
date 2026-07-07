@@ -74,6 +74,117 @@ def _print_df_summary(df: pd.DataFrame, label: str, show_head: int = 5):
         print(df.head(show_head).to_string())
 
 
+def _preload_dq_report(silver_df: pd.DataFrame, new_mask, save_path=None) -> None:
+    """Pre-load data-quality gate (capture-and-surface).
+
+    Flags are derived ONCE and split into the two lists that match how they're
+    acted on: ERRORS (unmapped / mis-typed income — should be zero, fix before
+    trusting the load) and FOR REVIEW (transfers, refunds, alimony receipts —
+    load fine, the owner just wants eyes on them). The same flagged frame drives
+    both the console summary and the optional review CSV. Scoped to the rows that
+    would actually be inserted (new_mask), checked against silver.category_mapping.
+    """
+    import difflib
+    from utils.db_connector import get_db_connector
+
+    # Flags that mean "fix this" (should be zero); everything else is watchlist.
+    ERROR_FLAGS = {"UNMAPPED_SUBCAT", "INCOME_UNMAPPED_REAL"}
+    REVIEW_FLAG_ORDER = ("TRANSFER", "INCOME_NON_INCOME_REFUND", "ALIMENTS_INCOME")
+
+    df = silver_df.loc[new_mask].copy()
+
+    print(f"\n{SEPARATOR}")
+    print("  PRE-LOAD DATA-QUALITY REPORT")
+    print(SEPARATOR)
+    print(f"Rows that would be inserted: {len(df)}")
+    if df.empty:
+        print("  Nothing new to load — no checks to run.")
+        return
+    print(f"Type split: {df['transaction_type'].value_counts().to_dict()}")
+
+    try:
+        db = get_db_connector()
+        with db.connect() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT subcategory, category, classification FROM silver.category_mapping")
+            mapping = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+    except Exception as e:
+        print(f"  Could not load category_mapping ({e}) — skipping DQ checks.")
+        return
+    keys = list(mapping)
+    keyset = set(keys)
+    suggestions = {
+        s: (difflib.get_close_matches(s, keys, n=1, cutoff=0.6) or [""])[0]
+        for s in set(df["subcategory"].dropna()) if s not in keyset
+    }
+
+    # ---- derive flags ONCE; every section below reads from this ----
+    def _flags_for(row):
+        f = []
+        sc = row["subcategory"]
+        cat = mapping.get(sc, (None, None))[0]
+        if sc not in keyset:
+            f.append("UNMAPPED_SUBCAT")
+        if sc in ("Transfer", "Transfer, withdraw"):
+            f.append("TRANSFER")
+        if row["transaction_type"] == "INCOME":
+            if sc == "Aliments":                      # genuine alimony/support receipt
+                f.append("ALIMENTS_INCOME")
+            if cat is None:
+                f.append("INCOME_UNMAPPED_REAL")
+            elif cat != "Income":                     # Child Support, reimbursements -> REFUND
+                f.append("INCOME_NON_INCOME_REFUND")
+        return f
+
+    df["flag_list"] = df.apply(_flags_for, axis=1)
+    df["flags"] = df["flag_list"].map(",".join)
+    flagged = df[df["flags"] != ""].copy()
+    is_error = flagged["flag_list"].map(lambda fs: any(x in ERROR_FLAGS for x in fs))
+    errors, review = flagged[is_error], flagged[~is_error]
+
+    # ---- ERRORS: should be zero ----
+    print(f"\nERRORS (fix before trusting this load): {len(errors)}")
+    if errors.empty:
+        print("    none — every subcategory resolves and income is correctly typed.")
+    else:
+        for s in sorted({x for x in errors["subcategory"] if x not in keyset}):
+            n = int((errors["subcategory"] == s).sum())
+            g = suggestions.get(s, "")
+            hint = f"did you mean '{g}'?" if g else "no close match — possibly a new concept"
+            print(f"    - {s!r} ({n} rows)  ->  {hint}")
+        print("    >> add a row to silver.category_mapping (migration) so these resolve.")
+
+    # ---- FOR REVIEW: expected edge cases, load is fine ----
+    print(f"\nFOR REVIEW (expected edge cases, load is fine): {len(review)}")
+    for flag in REVIEW_FLAG_ORDER:
+        rows_f = review[review["flag_list"].map(lambda fs, ff=flag: ff in fs)]
+        extra = f"  (net {rows_f['amount'].sum():.2f})" if flag == "TRANSFER" and len(rows_f) else ""
+        print(f"    {flag}: {len(rows_f)}{extra}")
+        if flag != "TRANSFER":
+            for s, c in rows_f["subcategory"].value_counts().items():
+                print(f"        {s!r}: {c}")
+
+    # ---- optional review CSV (same flagged frame) ----
+    if save_path is not None and not flagged.empty:
+        flagged["suggested_mapping"] = flagged["subcategory"].map(lambda s: suggestions.get(s, ""))
+        flagged["current_category"] = flagged["subcategory"].map(
+            lambda s: mapping.get(s, ("<UNMAPPED>", None))[0]
+        )
+        cols = [
+            "flags", "transaction_date", "transaction_type", "amount",
+            "subcategory", "suggested_mapping", "current_category",
+            "account_name", "payee", "description",
+        ]
+        out = flagged[[c for c in cols if c in flagged.columns]].sort_values(
+            ["flags", "transaction_date"]
+        )
+        save_path.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        review_path = save_path / f"preload_dq_review_{ts}.csv"
+        out.to_csv(review_path, index=False, encoding="utf-8-sig")
+        print(f"\n  Saved review file ({len(out)} rows): {review_path}")
+
+
 def main():
     import argparse
 
@@ -226,12 +337,11 @@ def main():
     bronze_df["source_row_number"] = range(1, len(bronze_df) + 1)
     bronze_df["ingestion_timestamp"] = datetime.now()
     bronze_df["ingestion_batch_id"] = str(batch_id)
-    bronze_df["has_quality_issues"] = False
     bronze_columns = [
         "transaction_date", "description", "transaction_type", "payee",
         "amount", "labels", "account_name", "subcategory", "currency",
         "payment_method", "source_file", "source_row_number",
-        "ingestion_timestamp", "ingestion_batch_id", "has_quality_issues",
+        "ingestion_timestamp", "ingestion_batch_id",
     ]
     bronze_df = bronze_df[[c for c in bronze_columns if c in bronze_df.columns]]
 
@@ -288,6 +398,9 @@ def main():
         if dup_count > 0 and dup_count <= 10:
             dup_hashes = silver_df.loc[~new_mask, "transaction_hash"].tolist()
             print(f"\n  Duplicate hashes: {dup_hashes}")
+
+        # Pre-load data-quality gate (scoped to the rows that would insert)
+        _preload_dq_report(silver_df, new_mask, save_path=(output_dir if args.save else None))
     except Exception as e:
         print(f"\n  Could not check dedup against DB: {e}")
 

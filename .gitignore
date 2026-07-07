@@ -27,6 +27,10 @@ data/inspection/*
 *.xls
 *.csv
 
+# Tableau workbooks (.twbx packages the real data extract)
+data/workbooks/
+*.twbx
+
 # Standalone analysis scripts working on personal data
 data_check_scripts/
 # Cursor state files
@@ -111,6 +115,14 @@ docs/07_BACKLOG.md
 docs/08_STRATEGIC_ROADMAP.md
 docs/09_SIMPLIFICATION_REPORT.md
 docs/AI_CONTEXT_PACK.md
+
+# =====================================================
+# Legacy / local-only files (untracked, kept on disk)
+# =====================================================
+MEMORY.md
+architecture_doc.md
+repo_structure.md
+start-platform.bat
 
 # =====================================================
 # IDE / OS

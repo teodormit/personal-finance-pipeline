@@ -56,6 +56,19 @@ class ExpenseTransformer:
         'EUR': 1.0,
         'USD': 1.17,
     }
+
+    # BudgetBakers exports the owner's 'Child Support' loan-tracking subcategory
+    # as 'Aliments (Financial expenses)'. Restore the canonical label so
+    # category_mapping resolves it to Financial expenses. Both directions are
+    # loan tracking (EXPENSE = money out, INCOME = repayment received — the
+    # income side is a REFUND, not real income). A genuine alimony/support
+    # *income* is categorised as bare 'Aliments' (-> Income) in the app and is
+    # surfaced separately by the pre-load DQ report, not renamed here.
+    # Keyed by (app_label, transaction_type) to keep the map type-explicit.
+    SUBCATEGORY_RENAMES = {
+        ('Aliments (Financial expenses)', 'EXPENSE'): 'Child Support',
+        ('Aliments (Financial expenses)', 'INCOME'): 'Child Support',
+    }
     
     def __init__(self):
         """
@@ -331,7 +344,16 @@ class ExpenseTransformer:
         }
         
         df['transaction_type'] = df['type'].str.lower().map(type_map)
-        
+
+        # Restore canonical subcategory labels for known app-side renames.
+        # Type-scoped: only rewrites rows matching both the label and direction.
+        if 'subcategory' in df.columns:
+            for (app_label, txn_type), canonical in self.SUBCATEGORY_RENAMES.items():
+                mask = (df['subcategory'] == app_label) & (df['transaction_type'] == txn_type)
+                if mask.any():
+                    df.loc[mask, 'subcategory'] = canonical
+                    print(f"  Renamed {mask.sum()} '{app_label}' ({txn_type}) -> '{canonical}'")
+
         # Show distribution
         counts = df['transaction_type'].value_counts()
         print(f"  Types:")
