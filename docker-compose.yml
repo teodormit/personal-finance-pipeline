@@ -86,6 +86,9 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./backups:/app/backups
+      # Account-filter presets. config/accounts.yaml is gitignored (personal) and
+      # bind-mounted at runtime so real account names never bake into the image.
+      - ./config:/app/config
     networks:
       - data_platform_network
     # No `ports:` — this is a one-shot job, nothing to expose externally.

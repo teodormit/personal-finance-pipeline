@@ -115,6 +115,9 @@ Both gold tables refresh **automatically** after each pipeline load (incremental
 ### Setup
 
 1. Copy `.env.example` to `.env` and fill in your credentials (Postgres + `BUDGETBAKERS_API_TOKEN`).
+   Then copy `config/accounts.example.yaml` to `config/accounts.yaml` and replace the placeholder
+   account names with your BudgetBakers account display names. That file is gitignored so your real
+   account names stay private; the `--account-filter` presets are read from it.
 2. Start PostgreSQL: `docker compose up -d postgres`
 3. Install deps (only needed for host-based Python runs — the Docker path doesn't need this): `pip install -r requirements.txt`
 4. Create the schema. The entire warehouse — all five schemas, every table and
@@ -228,7 +231,9 @@ python scripts/run_pipeline.py --mode incremental --source file --file data/raw/
 
 ### Incremental with Account Filter
 
-Filter to specific account presets during load:
+Filter to specific account presets during load. Which BudgetBakers accounts each preset
+includes is defined in `config/accounts.yaml` (gitignored) — see `config/accounts.example.yaml`
+for the format:
 
 ```bash
 python scripts/run_pipeline.py --mode incremental --account-filter bgn_final

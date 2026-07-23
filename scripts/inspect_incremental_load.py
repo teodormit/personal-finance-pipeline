@@ -188,6 +188,8 @@ def _preload_dq_report(silver_df: pd.DataFrame, new_mask, save_path=None) -> Non
 def main():
     import argparse
 
+    from loaders.incremental_load import PRESET_CHOICES
+
     parser = argparse.ArgumentParser(description="Dry-run inspection of incremental load pipeline")
     parser.add_argument("--source", choices=["api", "file"], default="api")
     parser.add_argument("--file", help="Path to source file (required when --source=file)")
@@ -201,9 +203,9 @@ def main():
     )
     parser.add_argument(
         "--account-filter",
-        choices=["eur", "bgn_final", "gf", "combined"],
+        choices=PRESET_CHOICES,
         default="eur",
-        help="Account filter preset (default: eur)",
+        help="Account filter preset (default: eur). Presets are defined in config/accounts.yaml.",
     )
     parser.add_argument("--save", action="store_true", help="Save each stage to CSV in data/inspection/")
     args = parser.parse_args()

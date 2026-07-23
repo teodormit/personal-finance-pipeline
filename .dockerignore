@@ -15,6 +15,9 @@ credentials/
 client_secret_*.json
 *-service-account*.json
 
+# --- Personal config (real account names; supplied at runtime via bind mount) ---
+config/accounts.yaml
+
 # --- Personal financial data ------------------------------------------------
 data/raw/*
 data/processed/*

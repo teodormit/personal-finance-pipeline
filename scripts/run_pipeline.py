@@ -53,6 +53,8 @@ def _preflight_db_check():
 
 
 def main():
+    from loaders.incremental_load import PRESET_CHOICES
+
     parser = argparse.ArgumentParser(
         description="Run personal finance expense pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -90,9 +92,9 @@ Examples:
     )
     parser.add_argument(
         "--account-filter",
-        choices=["eur", "bgn_final", "gf", "combined"],
+        choices=PRESET_CHOICES,
         default="eur",
-        help="Account filter preset for incremental mode (default: eur). 'gf'=Pepi's accounts, 'combined'=both.",
+        help="Account filter preset for incremental mode (default: eur). Presets are defined in config/accounts.yaml.",
     )
     parser.add_argument(
         "--refresh-gold",

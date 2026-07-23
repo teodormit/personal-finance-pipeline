@@ -1,0 +1,56 @@
+# =============================================================================
+# Account-filter presets — TEMPLATE (committed, fictional names).
+# =============================================================================
+# Copy this file to config/accounts.yaml and replace the placeholder account
+# names with your own BudgetBakers account display names:
+#
+#     cp config/accounts.example.yaml config/accounts.yaml
+#
+# config/accounts.yaml is gitignored so your real account names never enter
+# version control. The pipeline reads presets from it at import time
+# (see src/utils/config.py). Keep the preset KEYS you use — they are the values
+# accepted by --account-filter on run_pipeline.py.
+#
+# Each preset lists:
+#   allowed_accounts   — account display names that survive the filter.
+#   account_end_dates  — optional per-account cutoff (YYYY-MM-DD, inclusive);
+#                        rows for that account dated after it are dropped.
+#
+# 'eur' is the default preset used by run_pipeline.py / incremental_load.py.
+# =============================================================================
+presets:
+  eur:
+    allowed_accounts:
+      - "My Bank - Main EUR"
+      - "Cash EUR"              # old name, still used in some historical records
+      - "Cash EUR - Me"
+      - "Mobile Pay"
+      - "Revolut - Me - EUR"
+    account_end_dates: {}
+
+  bgn_final:
+    allowed_accounts:
+      - "My Bank - Main BGN"
+      - "Cash"
+    account_end_dates:
+      "My Bank - Main BGN": "2025-12-22"
+      "Cash": "2025-12-31"
+
+  gf:
+    allowed_accounts:
+      - "Partner - My Bank EUR"
+      - "Partner - Cash"
+      - "Partner - Revolut - EUR"
+    account_end_dates: {}
+
+  combined:
+    allowed_accounts:
+      - "My Bank - Main EUR"
+      - "Cash EUR"
+      - "Cash EUR - Me"
+      - "Revolut - Me - EUR"
+      - "Mobile Pay"
+      - "Partner - My Bank EUR"
+      - "Partner - Cash"
+      - "Partner - Revolut - EUR"
+    account_end_dates: {}

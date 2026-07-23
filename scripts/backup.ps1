@@ -7,7 +7,6 @@
 
 $ContainerName = "postgres_container"
 $DbName        = "finance_warehouse"
-$DbUser        = "teodor_admin"
 $ProjectRoot   = Split-Path -Parent $PSScriptRoot
 $BackupDir     = Join-Path $ProjectRoot "backups"
 $Date          = Get-Date -Format "yyyy-MM-dd"
@@ -16,14 +15,16 @@ $RetainDays    = 45
 $GdriveRemote  = "gdrive"
 $GdriveFolder  = "Finance Warehouse Backups"
 
-# Read POSTGRES_PASSWORD from .env (avoids hardcoding credentials)
+# Read POSTGRES_USER and POSTGRES_PASSWORD from .env (avoids hardcoding credentials)
 $EnvFile = Join-Path $ProjectRoot ".env"
 $PgPassword = (Get-Content $EnvFile | Where-Object { $_ -match "^POSTGRES_PASSWORD=" }) -replace "^POSTGRES_PASSWORD=", ""
+$DbUser     = (Get-Content $EnvFile | Where-Object { $_ -match "^POSTGRES_USER=" }) -replace "^POSTGRES_USER=", ""
 
 if (-not $PgPassword) {
     Write-Host "ERROR: POSTGRES_PASSWORD not found in .env" -ForegroundColor Red
     exit 1
 }
+if (-not $DbUser) { $DbUser = "postgres" }
 
 # Ensure backup directory exists
 New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null

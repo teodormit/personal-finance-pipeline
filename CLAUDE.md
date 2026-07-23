@@ -129,9 +129,9 @@ Use `%s` placeholders for query parameters — never interpolate variables into 
 | `src/loaders/gold_notable_loader.py` | Gold upsert for notability |
 | `src/loaders/gold_save_potential_loader.py` | Gold upsert for save potential |
 
-## Strategic Roadmap
+## Strategy & Execution Plans
 
-`docs/08_STRATEGIC_ROADMAP.md` is the living strategic document for this project. Read it before proposing what to work on next — it documents critical gaps, phasing decisions, tooling choices already made, and open questions still to be decided.
+`docs/10_PRODUCT_STRATEGY.md` (2026-07) is the current strategy; `plan/` holds the execution playbooks — read `plan/00_OVERVIEW.md` first (executor contract, blind-spot register, status board) before proposing or starting work. When asked to run a playbook, follow it: goals and boundaries outrank steps, ground every claim in a tool result, stop-and-ask on destructive or scope-changing actions, and update the playbook's status/checkboxes plus MEMORY.md when done. `docs/08_STRATEGIC_ROADMAP.md` is the 2026-04 assessment — still valid background, but its Phase B.1/B.4 and the Approach C deferral are superseded by docs/10.
 
 ## Diagnostic Scripts
 
