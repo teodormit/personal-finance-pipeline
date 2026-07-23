@@ -18,48 +18,15 @@ if str(_src_root) not in sys.path:
 
 from extractors.budgetbakers_extractor import BudgetBakersExtractor
 from loaders.base_loader import BaseLoader
+from utils.config import load_account_presets
 
-# Account filter presets: allowed accounts + optional per-account end dates (YYYY-MM-DD inclusive)
-ACCOUNT_FILTER_PRESETS = {
-    "eur": {
-        "allowed_accounts": [
-            "UniCredit Bulbank - 1522449108EUR",
-            "Cash in Euro",  # old name, still used in some historical records
-            "Cash in Euro - Teo",
-            "Google Pay",
-            "Revolut - Teo - EUR",
-        ],
-        "account_end_dates": {},
-    },
-    "bgn_final": {
-        "allowed_accounts": ["UniCredit Bulbank - 1522449108BGN", "Cash"],
-        "account_end_dates": {
-            "UniCredit Bulbank - 1522449108BGN": "2025-12-22",
-            "Cash": "2025-12-31",
-        },
-    },
-    "gf": {
-        "allowed_accounts": [
-            "Pepi - UniCredit Bulbank - 1524149621EUR",
-            "Pepi - Cash",
-            "Pepi - Revolut - EUR",
-        ],
-        "account_end_dates": {},
-    },
-    "combined": {
-        "allowed_accounts": [
-            "UniCredit Bulbank - 1522449108EUR",
-            "Cash in Euro",
-            "Cash in Euro - Teo",
-            "Revolut - Teo - EUR",
-            "Google Pay",
-            "Pepi - UniCredit Bulbank - 1524149621EUR",
-            "Pepi - Cash",
-            "Pepi - Revolut - EUR",
-        ],
-        "account_end_dates": {},
-    },
-}
+# Account-filter presets: allowed accounts + optional per-account end dates
+# (YYYY-MM-DD inclusive). Real account names are personal data, so they live in
+# gitignored config/accounts.yaml (template: config/accounts.example.yaml) and
+# are loaded here at import time. The module-level name is kept so the inspect
+# script and argparse (PRESET_CHOICES) can import it unchanged.
+ACCOUNT_FILTER_PRESETS = load_account_presets()
+PRESET_CHOICES = sorted(ACCOUNT_FILTER_PRESETS)
 
 
 class IncrementalDataLoader(BaseLoader):
@@ -266,9 +233,9 @@ def main():
     )
     parser.add_argument(
         "--account-filter",
-        choices=["eur", "bgn_final", "gf", "combined"],
+        choices=PRESET_CHOICES,
         default="eur",
-        help="Account filter preset (default: eur). 'gf'=Pepi's accounts, 'combined'=both.",
+        help="Account filter preset (default: eur). Presets are defined in config/accounts.yaml.",
     )
     parser.add_argument(
         "--from-date",

@@ -52,7 +52,7 @@ class DatabaseConnection:
         self.host = os.getenv('POSTGRES_HOST', 'localhost')
         self.port = os.getenv('POSTGRES_PORT', '5432')
         self.database = os.getenv('POSTGRES_DB', 'finance_warehouse')
-        self.user = os.getenv('POSTGRES_USER', 'teodor_admin')
+        self.user = os.getenv('POSTGRES_USER', 'postgres')
         self.password = os.getenv('POSTGRES_PASSWORD')
         
         # Store connection string (we'll use this to connect)

@@ -114,9 +114,9 @@ class InitialDataLoader(BaseLoader):
         super()._display_summary(
             extra_lines=[
                 "\nNext Steps:",
-                "  1. Verify data: psql -U teodor_admin -d finance_warehouse",
-                "     SELECT * FROM silver.v_tableau_transactions LIMIT 10;",
-                "  2. Connect Tableau to silver.v_tableau_transactions",
+                "  1. Verify data: SELECT * FROM silver.transactions LIMIT 10;",
+                "  2. Connect Tableau to silver.transactions and the gold tables",
+                "     (gold.transaction_notability, gold.transaction_save_potential).",
                 "  3. For future updates, use: python scripts/run_pipeline.py --mode incremental",
             ],
         )

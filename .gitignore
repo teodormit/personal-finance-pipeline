@@ -10,6 +10,10 @@ credentials/
 client_secret_*.json
 *-service-account*.json
 
+# Personal account-filter config (real bank-account display names).
+# Template lives at config/accounts.example.yaml (committed).
+config/accounts.yaml
+
 # =====================================================
 # Personal financial data (NEVER commit)
 # =====================================================
@@ -114,7 +118,11 @@ docs/06_CHANGELOG.md
 docs/07_BACKLOG.md
 docs/08_STRATEGIC_ROADMAP.md
 docs/09_SIMPLIFICATION_REPORT.md
+docs/10_PRODUCT_STRATEGY.md
 docs/AI_CONTEXT_PACK.md
+# Strategy + playbooks reference the unfixed privacy exposure (see plan/01)
+# — keep private at least until Playbook 01 is complete.
+plan/
 
 # =====================================================
 # Legacy / local-only files (untracked, kept on disk)
