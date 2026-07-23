@@ -19,7 +19,15 @@ EXAMPLE_FILE = _CONFIG_DIR / "accounts.example.yaml"
 
 
 def load_account_presets() -> dict:
-    """Return the account-filter presets from ``config/accounts.yaml``.
+    """Return the account-filter presets.
+
+    Resolution order:
+      1. ``config/accounts.yaml`` (gitignored, real account names) if present.
+      2. ``config/accounts.example.yaml`` (committed template, fictional names)
+         as a fallback — so a fresh clone and CI can import the loader and run
+         the suite without a personal config. A notice is printed when the
+         fallback is used: the fictional accounts will filter out real data, so
+         a real run without a personal config surfaces an obvious "kept 0 rows".
 
     Structure (see ``config/accounts.example.yaml``)::
 
@@ -32,24 +40,33 @@ def load_account_presets() -> dict:
     preset-name -> preset is also accepted for forward-compatibility).
 
     Raises:
-        FileNotFoundError: if ``config/accounts.yaml`` is missing, with a message
-            pointing at the committed example file.
+        FileNotFoundError: if neither the real config nor the template exists.
+        ValueError: if the chosen file has no ``presets`` mapping.
     """
-    if not ACCOUNTS_FILE.exists():
+    if ACCOUNTS_FILE.exists():
+        source = ACCOUNTS_FILE
+    elif EXAMPLE_FILE.exists():
+        source = EXAMPLE_FILE
+        print(
+            f"[config] {ACCOUNTS_FILE.name} not found — using template "
+            f"{EXAMPLE_FILE.name} with fictional accounts. Copy it to "
+            f"{ACCOUNTS_FILE.name} and edit it for real runs."
+        )
+    else:
         raise FileNotFoundError(
-            f"Account config not found: {ACCOUNTS_FILE}\n"
-            f"Copy the committed template and edit it with your account names:\n"
+            f"No account config found. Expected {ACCOUNTS_FILE} or the "
+            f"committed template {EXAMPLE_FILE}. Restore the template or run:\n"
             f"    cp config/accounts.example.yaml config/accounts.yaml"
         )
 
-    with ACCOUNTS_FILE.open("r", encoding="utf-8") as fh:
+    with source.open("r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
 
     # Support both `presets: {...}` and a bare top-level mapping.
     presets = data.get("presets", data) if isinstance(data, dict) else {}
     if not isinstance(presets, dict) or not presets:
         raise ValueError(
-            f"No presets found in {ACCOUNTS_FILE}. "
+            f"No presets found in {source}. "
             f"Expected a 'presets:' mapping — see {EXAMPLE_FILE.name}."
         )
     return presets
