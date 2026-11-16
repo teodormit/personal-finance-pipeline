@@ -37,7 +37,8 @@ services:
       # Database initialization scripts (runs only on first init of a fresh volume)
       - ./scripts/sql/init:/docker-entrypoint-initdb.d
     ports:
-      - "5432:5432"
+      # Localhost-only exposure: not reachable from LAN/Wi-Fi/VPN (plan/exec/000).
+      - "127.0.0.1:5432:5432"
     restart: unless-stopped
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     healthcheck:

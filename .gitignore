@@ -120,6 +120,8 @@ docs/08_STRATEGIC_ROADMAP.md
 docs/09_SIMPLIFICATION_REPORT.md
 docs/10_PRODUCT_STRATEGY.md
 docs/AI_CONTEXT_PACK.md
+# Repo audit describes the security posture of this public repo.
+docs/REPO_AUDIT.md
 # Strategy + playbooks reference the unfixed privacy exposure (see plan/01)
 # — keep private at least until Playbook 01 is complete.
 plan/
