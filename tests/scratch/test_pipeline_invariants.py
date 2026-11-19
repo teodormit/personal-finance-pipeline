@@ -295,12 +295,8 @@ def test_i8_gold_refresh_equivalence(db, state):
 
 
 # --------------------------------------------------------------------------- #
-# I10 gold numerics use NULL, not NaN (finding surfaced by this harness)
+# I10 gold numerics use NULL, not NaN (found by spec 001, fixed in spec 002)
 # --------------------------------------------------------------------------- #
-@pytest.mark.xfail(
-    strict=True,
-    reason="gold stores NUMERIC 'NaN' instead of NULL (likely: df.where(notna, None) keeps NaN in float cols, gold_refresher.py:216)",
-)
 @pytest.mark.parametrize("table", GOLD_TABLES)
 def test_i10_gold_has_no_numeric_nan(db, state, table):
     numeric_cols = [

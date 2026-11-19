@@ -219,6 +219,30 @@ def test_upsert_to_gold_builds_expected_query_and_serializes_json():
     conn.commit.assert_called_once()
 
 
+def test_upsert_to_gold_sends_none_not_nan_for_float_columns():
+    """Spec 002 Fix A: NaN in a float column must reach the DB as None (SQL NULL).
+
+    psycopg2 adapts float('nan') to 'NaN'::float, which NUMERIC columns store
+    as NaN rather than NULL.
+    """
+    refresher = _StubRefresher()
+    conn = MagicMock()
+    conn.cursor.return_value = MagicMock()
+
+    df = pd.DataFrame(
+        {"transaction_hash": ["h1", "h2"], "score": [1.5, float("nan")], "label": ["A", "B"]}
+    )
+    assert df["score"].dtype == "float64"
+
+    with patch("loaders.gold_refresher.execute_batch") as mock_eb:
+        refresher._upsert_to_gold(conn, df)
+
+    values = mock_eb.call_args.args[2]
+    score_idx = refresher.gold_columns.index("score")
+    assert values[0][score_idx] == 1.5
+    assert values[1][score_idx] is None, f"expected None, got {values[1][score_idx]!r}"
+
+
 def test_upsert_to_gold_fills_missing_columns_with_none():
     refresher = _StubRefresher()
     conn = MagicMock()

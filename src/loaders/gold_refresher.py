@@ -213,7 +213,9 @@ class GoldRefresher:
             if c not in df.columns:
                 df[c] = None
         df = df[self.gold_columns]
-        df = df.where(pd.notna(df), None)
+        # Cast to object first: on float columns, .where(..., None) puts NaN
+        # back, and psycopg2 would write NUMERIC 'NaN' instead of NULL.
+        df = df.astype(object).where(pd.notna(df), None)
 
         update_set = ", ".join(
             f'"{c}" = EXCLUDED."{c}"'
