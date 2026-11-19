@@ -152,21 +152,18 @@ class IncrementalDataLoader(BaseLoader):
         print(f"  Inserted {rows:,} new rows (skipped {skipped:,} duplicates)")
 
     # ------------------------------------------------------------------ #
-    # Gold refresh: target only the new expense hashes
+    # Gold refresh: always a full rebuild (spec 002)
     # ------------------------------------------------------------------ #
-    # `_new_expense_hashes` is set inside `_load_silver`, so it may not exist
-    # on early-return paths (no new data, no rows post-filter). The
-    # `getattr(..., None) or set()` defaults to "no targets", which makes the
-    # gold refreshers no-op. Empty target set != full refresh.
+    # A targeted refresh of only the new hashes left neighbours stale (same
+    # month's frequency counts, later rows' rolling baselines). At this data
+    # volume a full rebuild takes seconds, so correctness wins.
+    # `_new_expense_hashes` is still tracked in `_load_silver` but no longer
+    # drives gold.
     def _refresh_gold_notability(self):
-        super()._refresh_gold_notability(
-            hashes=getattr(self, "_new_expense_hashes", None) or set()
-        )
+        super()._refresh_gold_notability(full=True)
 
     def _refresh_gold_save_potential(self):
-        super()._refresh_gold_save_potential(
-            hashes=getattr(self, "_new_expense_hashes", None) or set()
-        )
+        super()._refresh_gold_save_potential(full=True)
 
 
 def apply_account_filter(
