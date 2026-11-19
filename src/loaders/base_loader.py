@@ -12,7 +12,8 @@ on any failure. The two subclasses only differ in:
   - `_extract`: where the raw data comes from
   - `_load_silver`: truncate-and-reload vs. dedupe-and-append
   - `_post_transform`: optional account filter (incremental only)
-  - which gold-refresh mode they pass through (`hashes=...` vs `full=True`)
+  - (since spec 002 both request a full gold rebuild; the wrappers still
+    accept `hashes=...` for the unused targeted path)
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ class BaseLoader:
       - `_extract()` — produce a raw DataFrame
       - `_load_silver(df, conn)` — silver-load policy
       - `_post_transform(df)` — optional row filter after transform (defaults to identity)
-      - `_refresh_gold_*` — supply `hashes=...` or `full=True`
+      - `_refresh_gold_*` — supply `full=True` (loaders) or `hashes=...` (unused since spec 002)
     """
 
     # Subclasses override these two for human-readable output and silver lineage.
@@ -114,6 +115,11 @@ class BaseLoader:
                 print("\n  All layers committed in a single transaction.")
             except Exception:
                 conn.rollback()
+                # metadata.pipeline_runs must report what was KEPT. The layer
+                # writes set these counts before the failure; the rollback
+                # undid them, so nothing was loaded.
+                for key in ("rows_staged", "rows_loaded_bronze", "rows_loaded_silver"):
+                    self.run_stats[key] = 0
                 print("\n  Transaction rolled back - no partial data written.")
                 raise
             finally:

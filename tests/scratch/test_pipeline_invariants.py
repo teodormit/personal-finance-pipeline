@@ -342,10 +342,6 @@ def test_i9_in_batch_collision_rolls_back(db, collision_run):
     assert rows == [("FAILED",)], f"expected one FAILED pipeline_runs row, got {rows}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="pipeline_runs logs pre-rollback row counts on FAILED runs (rows_loaded_* not reset)",
-)
 def test_i7_pipeline_runs_reconcile_failed(db, collision_run):
     run = collision_run
     logged_bronze, logged_silver = _query_all(
