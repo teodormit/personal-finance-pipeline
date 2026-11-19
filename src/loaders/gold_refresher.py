@@ -81,13 +81,32 @@ class GoldRefresher:
     ) -> int:
         """Refresh `self.gold_table` for the given hashes (or all if `full=True`).
 
+        full=True (what the loaders use since spec 002): recompute every
+        EXPENSE row, delete gold rows whose hash is not in the recomputed set
+        (orphans), upsert the rest — delete + upsert commit together as ONE
+        transaction, so readers never see a half-rebuilt table.
+
+        Targeted mode (hashes=...): not used by loaders since spec 002 — it
+        rescores only the target rows, so neighbours in the same month/window
+        go stale (audit §3.1). Kept for now; removal is a later cleanup.
+
         Returns the number of rows upserted.
         """
         print(f"\n[GOLD] Refreshing {self.print_label}...")
         with db.connect() as conn:
             if full:
-                target_hashes = None
                 silver_df = self._fetch_silver_expenses(conn)
+                if len(silver_df) == 0:
+                    # Gold mirrors silver: no EXPENSE rows means no gold rows.
+                    self._delete_orphans(conn, set())
+                    conn.commit()
+                    print(f"  [GOLD] No silver expense data ({self.print_label}); gold emptied.")
+                    return 0
+                computed = self.compute(silver_df, window_days=window_days)
+                self._delete_orphans(conn, set(computed["transaction_hash"].astype(str)))
+                n = self._upsert_to_gold(conn, computed) if len(computed) else 0
+                conn.commit()
+                return n
             else:
                 if not hashes:
                     print(f"  [GOLD] No hashes to refresh ({self.print_label}), skipping.")
@@ -112,15 +131,16 @@ class GoldRefresher:
 
             computed = self.compute(silver_df, window_days=window_days)
 
-            if target_hashes is not None:
-                computed = computed[
-                    computed["transaction_hash"].astype(str).isin(target_hashes)
-                ]
+            computed = computed[
+                computed["transaction_hash"].astype(str).isin(target_hashes)
+            ]
             if len(computed) == 0:
                 print(f"  [GOLD] No rows to upsert ({self.print_label}) after filtering.")
                 return 0
 
-            return self._upsert_to_gold(conn, computed)
+            n = self._upsert_to_gold(conn, computed)
+            conn.commit()
+            return n
 
     # ---- Shared SQL helpers ---------------------------------------------- #
     @staticmethod
@@ -194,9 +214,21 @@ class GoldRefresher:
         cols = [d[0] for d in cursor.description]
         return pd.DataFrame(cursor.fetchall(), columns=cols)
 
+    def _delete_orphans(self, conn, keep_hashes: Set[str]) -> int:
+        """DELETE gold rows whose hash is not in `keep_hashes`. Does not commit."""
+        cursor = conn.cursor()
+        cursor.execute(
+            f"DELETE FROM {self.gold_table} WHERE NOT (transaction_hash = ANY(%s))",
+            (sorted(keep_hashes),),
+        )
+        deleted = cursor.rowcount
+        if deleted:
+            print(f"  [GOLD] Removed {deleted:,} orphaned rows from {self.gold_table}")
+        return deleted
+
     def _upsert_to_gold(self, conn, df: pd.DataFrame) -> int:
-        """UPSERT rows into self.gold_table on transaction_hash. Commits and
-        returns row count.
+        """UPSERT rows into self.gold_table on transaction_hash. Returns row
+        count. Does NOT commit — refresh() commits once, after any orphan delete.
         """
         df = df.copy()
         df["computed_at"] = datetime.now()
@@ -213,7 +245,9 @@ class GoldRefresher:
             if c not in df.columns:
                 df[c] = None
         df = df[self.gold_columns]
-        df = df.where(pd.notna(df), None)
+        # Cast to object first: on float columns, .where(..., None) puts NaN
+        # back, and psycopg2 would write NUMERIC 'NaN' instead of NULL.
+        df = df.astype(object).where(pd.notna(df), None)
 
         update_set = ", ".join(
             f'"{c}" = EXCLUDED."{c}"'
@@ -230,7 +264,6 @@ class GoldRefresher:
         values = df.values.tolist()
         cursor = conn.cursor()
         execute_batch(cursor, query, values, page_size=1000)
-        conn.commit()
         return len(values)
 
 

@@ -236,7 +236,7 @@ def test_i7_pipeline_runs_reconcile_success(db, state):
 
 
 # --------------------------------------------------------------------------- #
-# I8 gold refresh equivalence (targeted incremental vs full rebuild)
+# I8 gold refresh equivalence (post-load gold == explicit full rebuild; fixed in spec 002)
 # --------------------------------------------------------------------------- #
 def _norm(v):
     """NaN never equals itself; normalize it so unchanged NaN cells don't show as diffs."""
@@ -264,7 +264,6 @@ def _gold_snapshot(db, table) -> dict:
         conn.close()
 
 
-@pytest.mark.xfail(strict=True, reason="audit §3.1: targeted refresh ≠ full rebuild")
 def test_i8_gold_refresh_equivalence(db, state):
     from loaders.gold_notable_loader import NotabilityRefresher
     from loaders.gold_save_potential_loader import SavePotentialRefresher
@@ -295,12 +294,8 @@ def test_i8_gold_refresh_equivalence(db, state):
 
 
 # --------------------------------------------------------------------------- #
-# I10 gold numerics use NULL, not NaN (finding surfaced by this harness)
+# I10 gold numerics use NULL, not NaN (found by spec 001, fixed in spec 002)
 # --------------------------------------------------------------------------- #
-@pytest.mark.xfail(
-    strict=True,
-    reason="gold stores NUMERIC 'NaN' instead of NULL (likely: df.where(notna, None) keeps NaN in float cols, gold_refresher.py:216)",
-)
 @pytest.mark.parametrize("table", GOLD_TABLES)
 def test_i10_gold_has_no_numeric_nan(db, state, table):
     numeric_cols = [
@@ -347,10 +342,6 @@ def test_i9_in_batch_collision_rolls_back(db, collision_run):
     assert rows == [("FAILED",)], f"expected one FAILED pipeline_runs row, got {rows}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="pipeline_runs logs pre-rollback row counts on FAILED runs (rows_loaded_* not reset)",
-)
 def test_i7_pipeline_runs_reconcile_failed(db, collision_run):
     run = collision_run
     logged_bronze, logged_silver = _query_all(
@@ -367,3 +358,42 @@ def test_i7_pipeline_runs_reconcile_failed(db, collision_run):
     print(f"\nFAILED run logged bronze={logged_bronze} silver={logged_silver}; "
           f"actual bronze={actual_bronze} silver_delta={silver_delta}")
     assert (logged_bronze, logged_silver) == (actual_bronze, silver_delta)
+
+
+# --------------------------------------------------------------------------- #
+# I11 orphan removal: a silver row that disappears leaves no gold row behind
+# (spec 002). I3 checks "no orphans" but nothing in the main flow can create
+# one; this scenario deletes a silver EXPENSE row the way a manual correction
+# would, then re-runs an incremental load (all duplicates, zero new rows).
+# Runs last: it mutates silver.
+# --------------------------------------------------------------------------- #
+def test_i11_rebuild_removes_orphans(db, state, collision_run):
+    from loaders.incremental_load import IncrementalDataLoader
+
+    victim = _scalar(
+        db,
+        "SELECT transaction_hash FROM silver.transactions "
+        "WHERE transaction_type = 'EXPENSE' ORDER BY transaction_hash LIMIT 1",
+    )
+    conn = db.connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM silver.transactions WHERE transaction_hash = %s", (victim,))
+        conn.commit()
+    finally:
+        conn.close()
+    for t in GOLD_TABLES:
+        assert _scalar(db, f"SELECT COUNT(*) FROM {t} WHERE transaction_hash = %s", (victim,)) == 1
+
+    run = _run_load(
+        db,
+        "B3",
+        IncrementalDataLoader(source="file", file_path=str(state.paths["B"]), account_filter="all"),
+    )
+    assert run.error is None, f"re-run raised: {run.error!r}"
+    assert run.after["silver"] == run.before["silver"], "B re-run should insert nothing"
+    for t in GOLD_TABLES:
+        assert _scalar(db, f"SELECT COUNT(*) FROM {t} WHERE transaction_hash = %s", (victim,)) == 0, (
+            f"{t}: orphan for deleted silver row survived the rebuild"
+        )
+        assert _scalar(db, f"SELECT COUNT(*) FROM {t}") == _scalar(db, COUNT_SQL["silver_expense"])
