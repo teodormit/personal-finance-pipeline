@@ -144,3 +144,6 @@ start-platform.bat
 *~
 .DS_Store
 Thumbs.db
+
+# Claude Code: personal permission overrides (shared rules live in .claude/settings.json)
+.claude/settings.local.json
