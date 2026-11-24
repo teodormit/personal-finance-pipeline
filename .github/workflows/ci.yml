@@ -1,10 +1,12 @@
-# GitHub Actions CI workflow.
-# Runs the pytest suite on every push and pull request.
+# GitHub Actions CI workflow. Runs on every push and pull request.
 #
-# Integration tests in test_base_loader_integration.py auto-skip when
-# Postgres is not reachable (it isn't on the CI runner), so only the
-# pure-unit tests execute here. That's intentional — CI proves the
-# scoring formulas and loader contracts are correct in isolation.
+# Two jobs:
+#   test  - plain pytest. Integration tests that need a live Postgres
+#           auto-skip here, so this is the fast unit-level signal.
+#   check - scripts/check.py, the project grader: Tier 1 (unit, no DB)
+#           plus Tier 2, which starts a throwaway postgres:17 container
+#           via the runner's Docker and runs the pipeline invariants
+#           against synthetic data. Never touches a real warehouse.
 
 name: CI
 
@@ -36,3 +38,25 @@ jobs:
 
       - name: Run tests
         run: python -m pytest tests/ -v
+
+  check:
+    name: Full check (Tier 1 + scratch Postgres)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run check.py
+        run: python scripts/check.py
