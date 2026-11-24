@@ -141,3 +141,20 @@ def test_load_silver_tracks_only_expense_hashes_for_gold(loader):
 
     # Only the two EXPENSE rows are tracked for gold refresh.
     assert loader._new_expense_hashes == {"h_exp1", "h_exp2"}
+
+
+# ---------------------------------------------------------------------------
+# Spec 002: gold is always rebuilt in full after an incremental load
+# ---------------------------------------------------------------------------
+def test_gold_refresh_wrappers_request_full_rebuild(loader):
+    from loaders.base_loader import BaseLoader
+
+    with patch.object(BaseLoader, "_refresh_gold_notability") as notab, patch.object(
+        BaseLoader, "_refresh_gold_save_potential"
+    ) as save:
+        loader._new_expense_hashes = {"h_new"}  # must be ignored
+        loader._refresh_gold_notability()
+        loader._refresh_gold_save_potential()
+
+    notab.assert_called_once_with(full=True)
+    save.assert_called_once_with(full=True)

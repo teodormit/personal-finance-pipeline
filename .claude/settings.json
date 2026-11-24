@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(docker compose down*)",
+      "Bash(docker-compose down*)",
+      "Bash(docker volume rm*)",
+      "Bash(docker volume prune*)",
+      "Bash(docker system prune*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean*)",
+      "PowerShell(docker compose down*)",
+      "PowerShell(docker-compose down*)",
+      "PowerShell(docker volume rm*)",
+      "PowerShell(docker volume prune*)",
+      "PowerShell(docker system prune*)",
+      "PowerShell(git push --force*)",
+      "PowerShell(git push -f*)",
+      "PowerShell(git push * --force*)",
+      "PowerShell(git push * -f*)",
+      "PowerShell(git reset --hard*)",
+      "PowerShell(git clean*)"
+    ],
+    "ask": [
+      "Bash(*python* scripts/run_pipeline.py*)",
+      "Bash(*python* scripts/migrate.py)",
+      "Bash(*python* scripts/migrate.py --baseline*)",
+      "Bash(*python* src/loaders/*)",
+      "Bash(*python* scripts/anonymization_finance_data.py*)",
+      "Bash(*backup.ps1*)",
+      "PowerShell(*python* scripts/run_pipeline.py*)",
+      "PowerShell(*python* scripts/migrate.py)",
+      "PowerShell(*python* scripts/migrate.py --baseline*)",
+      "PowerShell(*python* src/loaders/*)",
+      "PowerShell(*python* scripts/anonymization_finance_data.py*)",
+      "PowerShell(*backup.ps1*)",
+      "Edit(/scripts/check.py)",
+      "Edit(/scripts/scratch_db.py)",
+      "Edit(/tests/scratch/**)",
+      "Edit(/tests/test_scratch_guard.py)",
+      "Edit(/tests/conftest.py)",
+      "Edit(/.claude/settings.json)"
+    ]
+  }
+}

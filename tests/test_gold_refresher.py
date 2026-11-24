@@ -216,7 +216,32 @@ def test_upsert_to_gold_builds_expected_query_and_serializes_json():
     # by the where(notna) call. Either is acceptable.
     assert values[1][extra_idx] in ("{}", None)
 
-    conn.commit.assert_called_once()
+    # Spec 002: the upsert no longer commits; refresh() commits once at the end.
+    conn.commit.assert_not_called()
+
+
+def test_upsert_to_gold_sends_none_not_nan_for_float_columns():
+    """Spec 002 Fix A: NaN in a float column must reach the DB as None (SQL NULL).
+
+    psycopg2 adapts float('nan') to 'NaN'::float, which NUMERIC columns store
+    as NaN rather than NULL.
+    """
+    refresher = _StubRefresher()
+    conn = MagicMock()
+    conn.cursor.return_value = MagicMock()
+
+    df = pd.DataFrame(
+        {"transaction_hash": ["h1", "h2"], "score": [1.5, float("nan")], "label": ["A", "B"]}
+    )
+    assert df["score"].dtype == "float64"
+
+    with patch("loaders.gold_refresher.execute_batch") as mock_eb:
+        refresher._upsert_to_gold(conn, df)
+
+    values = mock_eb.call_args.args[2]
+    score_idx = refresher.gold_columns.index("score")
+    assert values[0][score_idx] == 1.5
+    assert values[1][score_idx] is None, f"expected None, got {values[1][score_idx]!r}"
 
 
 def test_upsert_to_gold_fills_missing_columns_with_none():
@@ -269,6 +294,7 @@ def test_refresh_full_skips_target_info_and_calls_compute(monkeypatch):
     conn = MagicMock()
     cursor = MagicMock()
     conn.cursor.return_value = cursor
+    cursor.rowcount = 0  # real psycopg2 returns an int
     cursor.description = [("transaction_hash",), ("amount_abs_eur",)]
     cursor.fetchall.return_value = [("h1", 5.0), ("h2", 6.0)]
 
@@ -349,6 +375,7 @@ def test_refresh_empty_silver_returns_zero():
     conn = MagicMock()
     cursor = MagicMock()
     conn.cursor.return_value = cursor
+    cursor.rowcount = 0  # real psycopg2 returns an int
     cursor.description = [("transaction_hash",)]
     cursor.fetchall.return_value = []  # no silver rows
 
@@ -358,3 +385,76 @@ def test_refresh_empty_silver_returns_zero():
     assert n == 0
 
 
+
+
+# ---------------------------------------------------------------------------
+# Spec 002 Fix B: full refresh = orphan delete + upsert in ONE transaction
+# ---------------------------------------------------------------------------
+def test_refresh_full_deletes_orphans_then_upserts_then_commits_once():
+    refresher = _StubRefresher(
+        computed_df=pd.DataFrame(
+            {"transaction_hash": ["h1", "h2"], "score": [1.0, 2.0], "label": ["A", "B"]}
+        )
+    )
+    conn = MagicMock()
+    cursor = MagicMock()
+    conn.cursor.return_value = cursor
+    cursor.description = [("transaction_hash",), ("amount_abs_eur",)]
+    cursor.fetchall.return_value = [("h1", 5.0), ("h2", 6.0)]
+    cursor.rowcount = 3
+    db = _connect_returning(conn)
+
+    order = []
+    cursor.execute.side_effect = lambda sql, params=None: order.append(sql.split()[0])
+    conn.commit.side_effect = lambda: order.append("COMMIT")
+
+    with patch("loaders.gold_refresher.execute_batch", side_effect=lambda *a, **k: order.append("UPSERT")):
+        n = refresher.refresh(db, full=True)
+
+    assert n == 2
+    assert order == ["SELECT", "DELETE", "UPSERT", "COMMIT"]
+    delete_sql, delete_params = [c.args for c in cursor.execute.call_args_list if c.args[0].startswith("DELETE")][0]
+    assert "DELETE FROM gold.test_table" in delete_sql
+    assert "NOT (transaction_hash = ANY(%s))" in delete_sql
+    assert delete_params == (["h1", "h2"],)
+    conn.commit.assert_called_once()
+
+
+def test_refresh_full_with_empty_silver_empties_gold():
+    refresher = _StubRefresher()
+    conn = MagicMock()
+    cursor = MagicMock()
+    conn.cursor.return_value = cursor
+    cursor.rowcount = 0  # real psycopg2 returns an int
+    cursor.description = [("transaction_hash",)]
+    cursor.fetchall.return_value = []
+    db = _connect_returning(conn)
+
+    with patch("loaders.gold_refresher.execute_batch") as mock_eb:
+        n = refresher.refresh(db, full=True)
+
+    assert n == 0
+    mock_eb.assert_not_called()
+    delete_calls = [c for c in cursor.execute.call_args_list if c.args[0].startswith("DELETE")]
+    assert len(delete_calls) == 1 and delete_calls[0].args[1] == ([],)
+    conn.commit.assert_called_once()
+
+
+def test_refresh_targeted_still_commits_once():
+    """The targeted path is unused by loaders since spec 002 but must keep working."""
+    refresher = _StubRefresher(
+        computed_df=pd.DataFrame({"transaction_hash": ["h1"], "score": [1.0], "label": ["A"]})
+    )
+    conn = MagicMock()
+    cursor = MagicMock()
+    conn.cursor.return_value = cursor
+    cursor.description = [("transaction_hash",), ("amount_abs_eur",)]
+    cursor.fetchall.side_effect = [[("Food", date(2025, 1, 5))], [("h1", 10.0)]]
+    db = _connect_returning(conn)
+
+    with patch("loaders.gold_refresher.execute_batch"):
+        n = refresher.refresh(db, hashes={"h1"}, full=False)
+
+    assert n == 1
+    assert not any(c.args[0].startswith("DELETE") for c in cursor.execute.call_args_list)
+    conn.commit.assert_called_once()

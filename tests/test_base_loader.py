@@ -226,3 +226,40 @@ def test_log_pipeline_run_includes_error_message_on_failure(loader):
     assert "something exploded" in values
 
 
+
+
+# ---------------------------------------------------------------------------
+# Spec 002 Fix C: a rolled-back run logs what was KEPT, not what was attempted
+# ---------------------------------------------------------------------------
+def test_rollback_resets_loaded_counts_before_logging(loader):
+    df = pd.DataFrame({"transaction_hash": ["h1", "h2"], "amount": [1.0, 2.0]})
+    loader._extract = MagicMock(return_value=df)
+    loader._transform = MagicMock(return_value=df)
+    main_conn = MagicMock()
+    loader.db.connect.return_value = main_conn
+
+    def staged(d, conn):
+        loader.run_stats["rows_staged"] = 2
+
+    def bronzed(d, conn):
+        loader.run_stats["rows_loaded_bronze"] = 2
+
+    def silver_fails(d, conn):
+        loader.run_stats["rows_loaded_silver"] = 2  # set, then the write fails
+        raise RuntimeError("duplicate key value violates unique constraint")
+
+    loader._load_staging = staged
+    loader._load_bronze = bronzed
+    loader._load_silver = silver_fails
+
+    logged = {}
+    loader._log_pipeline_run = lambda: logged.update(loader.run_stats)
+
+    with pytest.raises(RuntimeError):
+        loader.load()
+
+    main_conn.rollback.assert_called_once()
+    assert logged["status"] == "FAILED"
+    assert logged["rows_staged"] == 0
+    assert logged["rows_loaded_bronze"] == 0
+    assert logged["rows_loaded_silver"] == 0
