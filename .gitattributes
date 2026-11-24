@@ -1,3 +1,6 @@
+# Default: let Git detect text files and store them with LF in the repo.
+* text=auto
+
 # Ensure shell scripts always check out with LF line endings on every host.
 # Without this, Windows Git would convert docker/pipeline-entrypoint.sh to
 # CRLF, breaking the Linux container's shebang interpreter.
@@ -8,3 +11,17 @@ docker/pipeline-entrypoint.sh text eol=lf
 Dockerfile text eol=lf
 .dockerignore text eol=lf
 docker-compose.yml text eol=lf
+
+# Source, docs and config: LF everywhere (stops CRLF phantom diffs on Windows)
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.txt text eol=lf
+.gitignore text eol=lf
+
+# PowerShell scripts stay CRLF (Windows-native)
+*.ps1 text eol=crlf
